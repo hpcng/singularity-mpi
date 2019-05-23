@@ -41,13 +41,15 @@ func run(experiments []exp.Experiment) []results.Result {
 		fmt.Printf("Running experiment with host MPI %s and container MPI %s\n", e.VersionHostMPI, e.VersionContainerMPI)
 		success, err := exp.Run(e)
 		if err != nil {
-			fmt.Println("WARNING! Cannot run experiment")
+			fmt.Printf("WARNING! Cannot run experiment: %s", err)
+			log.Fatal("error detected, stopping")
 		}
 		if success {
 			fmt.Println("Experiment succeeded")
 		} else {
 			fmt.Println("Experiment failed")
 		}
+		os.Exit(0)
 	}
 	return results
 }

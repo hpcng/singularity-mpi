@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 )
 
 type mpiConfig struct {
@@ -34,10 +35,12 @@ type Experiment struct {
 	URLContainerMPI     string
 }
 
-func downloadMPI(mpiCfg mpiConfig) error {
+func downloadMPI(mpiCfg *mpiConfig) error {
+	fmt.Println("Downloading MPI...")
+
 	// Sanity checks
 	if mpiCfg.URL == "" || mpiCfg.buildDir == "" {
-		return fmt.Errorf("imvalid parameter(s)")
+		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	// TODO do not assume wget
@@ -66,7 +69,7 @@ func downloadMPI(mpiCfg mpiConfig) error {
 	if len(files) != 1 {
 		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1", mpiCfg.buildDir, len(files))
 	}
-	mpiCfg.srcPath = files[0].Name()
+	mpiCfg.srcPath = filepath.Join(mpiCfg.buildDir, files[0].Name())
 
 	return nil
 }
@@ -76,21 +79,24 @@ const (
 )
 
 func detectTarbalFormat(filepath string) string {
-	if path.Ext(filepath) == "bz2" {
+	if path.Ext(filepath) == ".bz2" {
 		return formatBZ2
 	}
 
 	return ""
 }
 
-func unpackMPI(mpiCfg mpiConfig) error {
+func unpackMPI(mpiCfg *mpiConfig) error {
+	fmt.Println("Unpacking MPI...")
+
 	// Sanity checks
 	if mpiCfg.srcPath == "" || mpiCfg.buildDir == "" {
-		return fmt.Errorf("imvalid parameter(s)")
+		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	// Figure out the extension of the tarball
 	format := detectTarbalFormat(mpiCfg.srcPath)
+
 	if format == "" {
 		return fmt.Errorf("failed to detect format of file %s", mpiCfg.srcPath)
 	}
@@ -136,18 +142,21 @@ func unpackMPI(mpiCfg mpiConfig) error {
 	if len(entries) != 1 {
 		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1", mpiCfg.buildDir, len(entries))
 	}
-	mpiCfg.srcDir = entries[0].Name()
+	mpiCfg.srcDir = filepath.Join(mpiCfg.buildDir, entries[0].Name())
 
 	return nil
 }
 
-func configureMPI(mpiCfg mpiConfig) error {
+func configureMPI(mpiCfg *mpiConfig) error {
+	fmt.Println("Configuring MPI...")
+
+	// Some sanity checks
 	if mpiCfg.srcDir == "" || mpiCfg.installDir == "" {
-		return fmt.Errorf("imvalid parameter(s)")
+		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command("configure", "--prefix="+mpiCfg.installDir)
+	cmd := exec.Command("./configure", "--prefix="+mpiCfg.installDir)
 	cmd.Dir = mpiCfg.srcDir
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
@@ -159,9 +168,12 @@ func configureMPI(mpiCfg mpiConfig) error {
 	return nil
 }
 
-func compileMPI(mpiCfg mpiConfig) error {
+func compileMPI(mpiCfg *mpiConfig) error {
+	fmt.Println("Compiling MPI...")
+
+	// Some sanity checks
 	if mpiCfg.srcDir == "" {
-		return fmt.Errorf("imvalid parameter(s)")
+		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	// Because some packages are not as well implemented as they should,
@@ -195,30 +207,33 @@ func Run(exp Experiment) (bool, error) {
 	var err error
 
 	// Create a temporary directory where to compile MPI
-	myCfg.buildDir, err = ioutil.TempDir("", "mpi_build_"+exp.VersionHostMPI)
+	myCfg.buildDir, err = ioutil.TempDir("", "mpi_build_"+exp.VersionHostMPI+"-")
 	if err != nil {
 		return false, fmt.Errorf("failed to create compile directory: %s", err)
 	}
-	defer os.RemoveAll(myCfg.buildDir)
+	//defer os.RemoveAll(myCfg.buildDir)
 
 	// Create a temporary directory where to install MPI
-	myCfg.installDir, err = ioutil.TempDir("", "mpi_install_"+exp.VersionHostMPI)
+	myCfg.installDir, err = ioutil.TempDir("", "mpi_install_"+exp.VersionHostMPI+"-")
 	if err != nil {
 		return false, fmt.Errorf("failed to create install directory: %s", err)
 	}
 	defer os.RemoveAll(myCfg.installDir)
 
+	fmt.Println("Building MPI in", myCfg.buildDir)
+	fmt.Println("Installing MPI in", myCfg.installDir)
+
 	myCfg.URL = exp.URLHostMPI
 
-	err = installHostMPI(myCfg)
+	err = installHostMPI(&myCfg)
 	if err != nil {
-		return false, fmt.Errorf("failed to install host MPI")
+		return false, fmt.Errorf("failed to install host MPI: %s", err)
 	}
 
 	return true, nil
 }
 
-func installHostMPI(myCfg mpiConfig) error {
+func installHostMPI(myCfg *mpiConfig) error {
 	err := downloadMPI(myCfg)
 	if err != nil {
 		return fmt.Errorf("failed to download MPI from %s: %s", myCfg.URL, err)
@@ -232,7 +247,7 @@ func installHostMPI(myCfg mpiConfig) error {
 	// Right now, we assume we do not have to install autotools, which is a bad assumption
 	err = configureMPI(myCfg)
 	if err != nil {
-		return fmt.Errorf("failed to configure MPI")
+		return fmt.Errorf("failed to configure MPI: %s", err)
 	}
 
 	err = compileMPI(myCfg)
