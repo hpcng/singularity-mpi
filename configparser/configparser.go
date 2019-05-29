@@ -16,7 +16,7 @@ import (
 // Config represents the configuration of the tests to run
 type Config struct {
 	filename  string
-	mpiImplem string            // Reference the MPI implementation, e.g., Open MPI, MPICH
+	MPIImplem string            // Reference the MPI implementation, e.g., Open MPI, MPICH
 	MpiMap    map[string]string // store the URL to download a specific version, the key being the version
 }
 
@@ -81,10 +81,10 @@ func Parse(file string) (*Config, error) {
 		}
 
 		// If we did not detect the MPI implementation yet, we save it
-		if config.mpiImplem == "" {
-			config.mpiImplem = implem
-		} else if config.mpiImplem != implem {
-			return nil, fmt.Errorf("Detected two implementations of MPI (%s and %s)", config.mpiImplem, implem)
+		if config.MPIImplem == "" {
+			config.MPIImplem = implem
+		} else if config.MPIImplem != implem {
+			return nil, fmt.Errorf("Detected two implementations of MPI (%s and %s)", config.MPIImplem, implem)
 		}
 
 		config.MpiMap[version] = line

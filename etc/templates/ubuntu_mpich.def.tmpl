@@ -1,0 +1,36 @@
+Bootstrap: docker
+From: ubuntu:latest
+
+%files
+    mpitest.c /opt
+
+%environment
+    MPICH_DIR=/opt/mpich-3.3
+    export MPICH_DIR
+    export SINGULARITY_MPICH_DIR=$MPICH_DIR
+    export SINGULARITYENV_APPEND_PATH=$MPICH_DIR/bin
+    export SINGULAIRTYENV_APPEND_LD_LIBRARY_PATH=$MPICH_DIR/lib
+
+%post
+    echo "Installing required packages..."
+    apt-get update && apt-get install -y wget git bash gcc gfortran g++ make
+
+    # Information about the version of MPICH to use
+    export MPICH_VERSION=3.3
+    export MPICH_URL="http://www.mpich.org/static/downloads/3.3/mpich-3.3.tar.gz"
+    export MPICH_DIR=/opt/mpich
+
+    echo "Installing MPICH..."
+    mkdir -p /tmp/mpich
+    mkdir -p /opt
+    # Download
+    cd /tmp/mpich && wget -O mpich-$MPICH_VERSION.tar.gz $MPICH_URL && tar xzf mpich-$MPICH_VERSION.tar.gz
+    # Compile and install
+    cd /tmp/mpich/mpich-$MPICH_VERSION && ./configure --prefix=$MPICH_DIR && make -j8 install
+    # Set env variables so we can compile our application
+    export PATH=$MPICH_DIR/bin:$PATH
+    export LD_LIBRARY_PAtH=$MPICH_DIR/lib:$LD_LIBRARY_PATH
+    export MANPATH=$MPICH_DIR/share/man:$MANPATH
+
+    echo "Compiling the MPI application..."
+    cd /opt && mpicc -o mpitest mpitest.c

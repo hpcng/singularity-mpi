@@ -23,6 +23,7 @@ func getListExperiments(config *cfg.Config) []exp.Experiment {
 	for mpi1, mpi1url := range config.MpiMap {
 		for mpi2, mpi2url := range config.MpiMap {
 			newExperiment := exp.Experiment{
+				MPIImplm:            config.MPIImplem,
 				VersionHostMPI:      mpi1,
 				VersionContainerMPI: mpi2,
 				URLHostMPI:          mpi1url,
@@ -35,42 +36,56 @@ func getListExperiments(config *cfg.Config) []exp.Experiment {
 	return experiments
 }
 
-func run(experiments []exp.Experiment) []results.Result {
+func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 	var results []results.Result
+	// FIXME: do not always create
+	f, err := os.Create(sysCfg.OutputFile)
+	if err != nil {
+		log.Fatalf("failed to open %s: %s", sysCfg.OutputFile, err)
+	}
+	defer f.Close()
+
 	for _, e := range experiments {
 		fmt.Printf("Running experiment with host MPI %s and container MPI %s\n", e.VersionHostMPI, e.VersionContainerMPI)
-		success, err := exp.Run(e)
+		success, err := exp.Run(e, sysCfg)
 		if err != nil {
 			fmt.Printf("WARNING! Cannot run experiment: %s", err)
-			log.Fatal("error detected, stopping")
-		}
-		if success {
-			fmt.Println("Experiment succeeded")
+			f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tERROR\n")
 		} else {
-			fmt.Println("Experiment failed")
+			if success {
+				fmt.Println("Experiment succeeded")
+				f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tPASS\n")
+				f.Sync()
+			} else {
+				fmt.Println("Experiment failed")
+				f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\n")
+				f.Sync()
+			}
 		}
-		os.Exit(0)
 	}
 	return results
 }
 
 func main() {
+	var sysCfg exp.SysConfig
+
 	/* Figure out the directory of this binary */
 	bin, err := os.Executable()
 	if err != nil {
 		log.Fatal("cannot detect the directory of the binary")
 	}
 
-	binPath := filepath.Dir(bin)
+	sysCfg.BinPath = filepath.Dir(bin)
+	sysCfg.TemplateDir = filepath.Join(sysCfg.BinPath, "etc", "templates")
 
 	/* Figure out the current path */
-	curPath, err := os.Getwd()
+	sysCfg.CurPath, err = os.Getwd()
 	if err != nil {
 		log.Fatal("cannot detect current directory")
 	}
 
 	/* Argument parsing */
-	configFile := flag.String("configfile", binPath+"/etc/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
+	configFile := flag.String("configfile", sysCfg.BinPath+"/etc/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
 	outputFile := flag.String("outputFile", "./mpi-results.txt", "Full path to the output file")
 	verbose := flag.Bool("v", false, "Enable/disable verbosity")
 
@@ -80,14 +95,16 @@ func main() {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	config, err := cfg.Parse(*configFile)
+	sysCfg.ConfigFile = *configFile
+
+	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
-		log.Fatal("cannot parse", *configFile, " - ", err)
+		log.Fatal("cannot parse", sysCfg.ConfigFile, " - ", err)
 	}
 
 	// Display configuration
-	fmt.Println("Current directory:", curPath)
-	fmt.Println("Binary path:", binPath)
+	fmt.Println("Current directory:", sysCfg.CurPath)
+	fmt.Println("Binary path:", sysCfg.BinPath)
 
 	// Figure out all the experiments that need to be executed
 	experiments := getListExperiments(config)
@@ -97,10 +114,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to parse output file %s: %s", *outputFile, err)
 	}
+	sysCfg.OutputFile = *outputFile
 
 	// Remove the results we already have from list of experiments to run
 	experimentsToRun := results.Pruning(experiments, existingResults)
 
 	// Run the experiments
-	run(experimentsToRun)
+	run(experimentsToRun, &sysCfg)
 }

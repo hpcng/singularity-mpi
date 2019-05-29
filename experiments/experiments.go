@@ -8,15 +8,32 @@ package experiments
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 )
 
+// SysConfig captures some system configuration aspects that are necessary
+// to run experiments
+type SysConfig struct {
+	ConfigFile     string // Path to the configuration file describing experiments
+	BinPath        string // Path to the current binary
+	CurPath        string // Current path
+	TemplateDir    string // Where the template are
+	SedBin         string // Path to the sed binary
+	SingularityBin string // Path to the singularity binary
+	OutputFile     string // Path the output file
+}
+
 type mpiConfig struct {
-	URL             string // URL to use to download the tarball
+	mpiImplm        string // MPI implementation ID (e.g., OMPI, MPICH)
+	mpiVersion      string // Version of the MPI implementation to use
+	url             string // URL to use to download the tarball
+	tarball         string
 	srcPath         string // Path to the downloaded tarball
 	srcDir          string // Where the source has been untared
 	buildDir        string // Directory where to compile
@@ -25,10 +42,14 @@ type mpiConfig struct {
 	autoconfSrcPath string // Path to the autoconf tarball
 	automakeSrcPath string // Path to the automake tarball
 	libtoolsSrcPath string // Path to the libtools tarball
+	defFile         string // Definition file used to create MPI container
+	containerPath   string // Path to the container image
+	testPath        string // Path to the test to run within the container
 }
 
 // Experiment is a structure that represents the configuration of an experiment
 type Experiment struct {
+	MPIImplm            string
 	VersionHostMPI      string
 	URLHostMPI          string
 	VersionContainerMPI string
@@ -36,10 +57,10 @@ type Experiment struct {
 }
 
 func downloadMPI(mpiCfg *mpiConfig) error {
-	fmt.Println("Downloading MPI...")
+	fmt.Println("- Downloading MPI...")
 
 	// Sanity checks
-	if mpiCfg.URL == "" || mpiCfg.buildDir == "" {
+	if mpiCfg.url == "" || mpiCfg.buildDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
@@ -50,7 +71,7 @@ func downloadMPI(mpiCfg *mpiConfig) error {
 	}
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(binPath, mpiCfg.URL)
+	cmd := exec.Command(binPath, mpiCfg.url)
 	cmd.Dir = mpiCfg.buildDir
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
@@ -69,6 +90,7 @@ func downloadMPI(mpiCfg *mpiConfig) error {
 	if len(files) != 1 {
 		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1", mpiCfg.buildDir, len(files))
 	}
+	mpiCfg.tarball = files[0].Name()
 	mpiCfg.srcPath = filepath.Join(mpiCfg.buildDir, files[0].Name())
 
 	return nil
@@ -78,7 +100,7 @@ const (
 	formatBZ2 = "bz2"
 )
 
-func detectTarbalFormat(filepath string) string {
+func detectTarballFormat(filepath string) string {
 	if path.Ext(filepath) == ".bz2" {
 		return formatBZ2
 	}
@@ -87,7 +109,7 @@ func detectTarbalFormat(filepath string) string {
 }
 
 func unpackMPI(mpiCfg *mpiConfig) error {
-	fmt.Println("Unpacking MPI...")
+	fmt.Println("- Unpacking MPI...")
 
 	// Sanity checks
 	if mpiCfg.srcPath == "" || mpiCfg.buildDir == "" {
@@ -95,7 +117,7 @@ func unpackMPI(mpiCfg *mpiConfig) error {
 	}
 
 	// Figure out the extension of the tarball
-	format := detectTarbalFormat(mpiCfg.srcPath)
+	format := detectTarballFormat(mpiCfg.srcPath)
 
 	if format == "" {
 		return fmt.Errorf("failed to detect format of file %s", mpiCfg.srcPath)
@@ -148,7 +170,7 @@ func unpackMPI(mpiCfg *mpiConfig) error {
 }
 
 func configureMPI(mpiCfg *mpiConfig) error {
-	fmt.Println("Configuring MPI...")
+	fmt.Println("- Configuring MPI...")
 
 	// Some sanity checks
 	if mpiCfg.srcDir == "" || mpiCfg.installDir == "" {
@@ -169,7 +191,7 @@ func configureMPI(mpiCfg *mpiConfig) error {
 }
 
 func compileMPI(mpiCfg *mpiConfig) error {
-	fmt.Println("Compiling MPI...")
+	fmt.Println("- Compiling MPI...")
 
 	// Some sanity checks
 	if mpiCfg.srcDir == "" {
@@ -202,41 +224,95 @@ func compileMPI(mpiCfg *mpiConfig) error {
 }
 
 // Run configure, install and execute a given experiment
-func Run(exp Experiment) (bool, error) {
-	var myCfg mpiConfig
+func Run(exp Experiment, sysCfg *SysConfig) (bool, error) {
+	var myHostMPICfg mpiConfig
+	var myContainerMPICfg mpiConfig
 	var err error
 
+	/* CREATE THE HOST MPI CONFIGURATION */
+
 	// Create a temporary directory where to compile MPI
-	myCfg.buildDir, err = ioutil.TempDir("", "mpi_build_"+exp.VersionHostMPI+"-")
+	myHostMPICfg.buildDir, err = ioutil.TempDir("", "mpi_build_"+exp.VersionHostMPI+"-")
 	if err != nil {
 		return false, fmt.Errorf("failed to create compile directory: %s", err)
 	}
-	//defer os.RemoveAll(myCfg.buildDir)
+	defer os.RemoveAll(myHostMPICfg.buildDir)
 
 	// Create a temporary directory where to install MPI
-	myCfg.installDir, err = ioutil.TempDir("", "mpi_install_"+exp.VersionHostMPI+"-")
+	myHostMPICfg.installDir, err = ioutil.TempDir("", "mpi_install_"+exp.VersionHostMPI+"-")
 	if err != nil {
 		return false, fmt.Errorf("failed to create install directory: %s", err)
 	}
-	defer os.RemoveAll(myCfg.installDir)
+	defer os.RemoveAll(myHostMPICfg.installDir)
 
-	fmt.Println("Building MPI in", myCfg.buildDir)
-	fmt.Println("Installing MPI in", myCfg.installDir)
+	myHostMPICfg.mpiImplm = exp.MPIImplm
+	myHostMPICfg.url = exp.URLHostMPI
+	myHostMPICfg.mpiVersion = exp.VersionHostMPI
 
-	myCfg.URL = exp.URLHostMPI
+	fmt.Println("* Host MPI Configuration *")
+	fmt.Println("-> Building MPI in", myHostMPICfg.buildDir)
+	fmt.Println("-> Installing MPI in", myHostMPICfg.installDir)
+	fmt.Println("-> MPI implementation:", myHostMPICfg.mpiImplm)
+	fmt.Println("-> MPI version:", myHostMPICfg.mpiVersion)
+	fmt.Println("-> MPI URL:", myHostMPICfg.url)
 
-	err = installHostMPI(&myCfg)
+	/* CREATE THE CONTAINER MPI CONFIGURATION */
+
+	// Cretae a temporary directory where the container will be built
+	myContainerMPICfg.buildDir, err = ioutil.TempDir("", "mpi_container_"+exp.VersionContainerMPI+"-")
+	if err != nil {
+		return false, fmt.Errorf("failed to create directory to build container: %s", err)
+	}
+	defer os.RemoveAll(myContainerMPICfg.buildDir)
+
+	myContainerMPICfg.mpiImplm = exp.MPIImplm
+	myContainerMPICfg.url = exp.URLContainerMPI
+	myContainerMPICfg.mpiVersion = exp.VersionContainerMPI
+
+	fmt.Println("* Container MPI configuration *")
+	fmt.Println("-> Build container in", myContainerMPICfg.buildDir)
+	fmt.Println("-> MPI implementation:", myContainerMPICfg.mpiImplm)
+	fmt.Println("-> MPI version:", myContainerMPICfg.mpiVersion)
+	fmt.Println("-> MPI URL:", myContainerMPICfg.url)
+
+	err = installHostMPI(&myHostMPICfg)
 	if err != nil {
 		return false, fmt.Errorf("failed to install host MPI: %s", err)
 	}
+
+	err = createMPIContainer(&myContainerMPICfg, sysCfg)
+	if err != nil {
+		return false, fmt.Errorf("failed to create container: %s", err)
+	}
+
+	/* PREPARE THE COMMAND TO RUN THE ACTUAL TEST */
+
+	fmt.Println("Running Test(s)...")
+	var stdout, stderr bytes.Buffer
+	newPath := myHostMPICfg.installDir + "/bin:" + os.Getenv("PATH")
+	newLDPath := myHostMPICfg.installDir + "/lib:" + os.Getenv("LD_LIBRARY_PATH")
+	mpirunBin := filepath.Join(myHostMPICfg.installDir, "bin", "mpirun")
+	mpiCmd := exec.Command(mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
+	mpiCmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
+	mpiCmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
+	mpiCmd.Stdout = &stdout
+	mpiCmd.Stderr = &stderr
+	err = mpiCmd.Run()
+	if err != nil {
+		fmt.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
+		return false, nil
+	}
+
+	fmt.Printf("Successful run - stdout: %s; stderr: %s\n", stdout.String(), stderr.String())
 
 	return true, nil
 }
 
 func installHostMPI(myCfg *mpiConfig) error {
+	fmt.Println("Installing MPI on host...")
 	err := downloadMPI(myCfg)
 	if err != nil {
-		return fmt.Errorf("failed to download MPI from %s: %s", myCfg.URL, err)
+		return fmt.Errorf("failed to download MPI from %s: %s", myCfg.url, err)
 	}
 
 	err = unpackMPI(myCfg)
@@ -253,6 +329,199 @@ func installHostMPI(myCfg *mpiConfig) error {
 	err = compileMPI(myCfg)
 	if err != nil {
 		return fmt.Errorf("failed to compile MPI")
+	}
+
+	return nil
+}
+
+func copyFile(src string, dst string) error {
+	// Check that the source file is valid
+	srcStat, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("cannot access file %s: %s", src, err)
+	}
+
+	if !srcStat.Mode().IsRegular() {
+		return fmt.Errorf("invalid source file %s: %s", src, err)
+	}
+
+	// Actually do the copy
+	s, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %s", src, err)
+	}
+	defer s.Close()
+
+	d, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %s", dst, err)
+	}
+	defer d.Close()
+
+	_, err = io.Copy(d, s)
+	if err != nil {
+		return fmt.Errorf("unabel to copy file from %s to %s: %s", src, dst, err)
+	}
+
+	return nil
+}
+
+func updateMPICHDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
+	return fmt.Errorf("not supported yet (updateMPICHDefFile)")
+}
+
+func updateOMPIDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
+	var err error
+
+	// Sanity checks
+	if myCfg.mpiVersion == "" || myCfg.buildDir == "" || myCfg.url == "" || myCfg.defFile == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	if sysCfg.SedBin == "" {
+		sysCfg.SedBin, err = exec.LookPath("sed")
+		if err != nil {
+			return fmt.Errorf("failed to find path for sed: %s", err)
+		}
+	}
+
+	if myCfg.tarball == "" {
+		myCfg.tarball = path.Base(myCfg.url)
+	}
+
+	data, err := ioutil.ReadFile(myCfg.defFile)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %s", myCfg.defFile, err)
+	}
+
+	var tarArgs string
+	format := detectTarballFormat(myCfg.tarball)
+	switch format {
+	case formatBZ2:
+		tarArgs = "-xjf"
+	default:
+		return fmt.Errorf("un-supported tarball format for %s", myCfg.tarball)
+	}
+
+	content := string(data)
+	content = strings.Replace(content, "OMPIVERSION", myCfg.mpiVersion, -1)
+	content = strings.Replace(content, "OMPIURL", myCfg.url, -1)
+	content = strings.Replace(content, "OMPITARBALL", myCfg.tarball, -1)
+	content = strings.Replace(content, "TARARGS", tarArgs, -1)
+
+	err = ioutil.WriteFile(myCfg.defFile, []byte(content), 0)
+	if err != nil {
+		return fmt.Errorf("failed to write file %s: %s", myCfg.defFile, err)
+	}
+
+	return nil
+}
+
+func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
+	fmt.Println("- Generating Singularity defintion file...")
+	// Sanity checks
+	if myCfg.buildDir == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	var defFileName string
+	var templateFileName string
+	switch myCfg.mpiImplm {
+	case "openmpi":
+		templateFileName = "ubuntu_ompi.def.tmpl"
+		defFileName = "ubuntu_ompi.def"
+	case "MPICH":
+		templateFileName = "ubuntu_mpich.def.tmpl"
+		defFileName = "ubuntu_mpich.def"
+	default:
+		return fmt.Errorf("unsupported MPI implementation: %s", myCfg.mpiImplm)
+	}
+	templateDefFile := filepath.Join(sysCfg.TemplateDir, templateFileName)
+	myCfg.defFile = filepath.Join(myCfg.buildDir, defFileName)
+
+	// Copy the definition file template to the temporary directory
+	err := copyFile(templateDefFile, myCfg.defFile)
+	if err != nil {
+		return fmt.Errorf("Failed to copy %s to %s: %s", templateDefFile, myCfg.defFile, err)
+	}
+
+	// Copy the test file
+	testFile := filepath.Join(sysCfg.TemplateDir, "mpitest.c")
+	destTestFile := filepath.Join(myCfg.buildDir, "mpitest.c")
+	err = copyFile(testFile, destTestFile)
+	if err != nil {
+		return fmt.Errorf("Failed to copy %s to %s: %s", testFile, destTestFile, err)
+	}
+
+	// Update the definition file for the specific version of MPI we are testing
+	switch myCfg.mpiImplm {
+	case "openmpi":
+		err := updateOMPIDefFile(myCfg, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to update OMPI template: %s", err)
+		}
+	case "MPICH":
+		err := updateMPICHDefFile(myCfg, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to update MPICH template: %s", err)
+		}
+	}
+
+	return nil
+}
+
+func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
+	var err error
+
+	fmt.Println("- Creating image...")
+	// Some sanity checks
+	if myCfg.buildDir == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	if sysCfg.SingularityBin == "" {
+		sysCfg.SingularityBin, err = exec.LookPath("singularity")
+		if err != nil {
+			return fmt.Errorf("singularity not available: %s", err)
+		}
+	}
+
+	sudoBin, err := exec.LookPath("sudo")
+	if err != nil {
+		return fmt.Errorf("sudo not available: %s", err)
+	}
+
+	imgName := "singularity_mpi.sif"
+
+	myCfg.containerPath = filepath.Join(myCfg.buildDir, imgName)
+
+	// The definition file is ready so we simple build the container using the Singularity command
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(sudoBin, sysCfg.SingularityBin, "build", imgName, myCfg.defFile)
+	cmd.Dir = myCfg.buildDir
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
+	}
+
+	myCfg.testPath = filepath.Join("/", "opt", "mpitest")
+
+	return nil
+}
+
+// CreateMPIContainer creates a container based on a specific configuration.
+func createMPIContainer(myCfg *mpiConfig, sysCfg *SysConfig) error {
+	fmt.Println("Creating MPI container...")
+	err := generateDefFile(myCfg, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to generate Singularity definition file: %s", err)
+	}
+
+	err = createContainerImage(myCfg, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create container image: %s", err)
 	}
 
 	return nil
