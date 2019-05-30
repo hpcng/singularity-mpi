@@ -36,6 +36,18 @@ func getListExperiments(config *cfg.Config) []exp.Experiment {
 	return experiments
 }
 
+func getMPIImplemFromExperiments(experiments []exp.Experiment) string {
+	// Fair assumption: all experiments are based on the same MPI
+	// implementation (we actually check for that and the implementation
+	// is only included in the experiment structure so that the structure
+	// is self-contained).
+	if len(experiments) == 0 {
+		return ""
+	}
+
+	return experiments[0].MPIImplm
+}
+
 func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 	var results []results.Result
 	// FIXME: do not always create
@@ -86,35 +98,44 @@ func main() {
 
 	/* Argument parsing */
 	configFile := flag.String("configfile", sysCfg.BinPath+"/etc/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
-	outputFile := flag.String("outputFile", "./mpi-results.txt", "Full path to the output file")
+	outputFile := flag.String("outputFile", "", "Full path to the output file")
 	verbose := flag.Bool("v", false, "Enable/disable verbosity")
 
 	flag.Parse()
 
+	// Save the options passed in through the command flags
 	if *verbose == false {
 		log.SetOutput(ioutil.Discard)
 	}
-
 	sysCfg.ConfigFile = *configFile
+	sysCfg.OutputFile = *outputFile
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
 		log.Fatal("cannot parse", sysCfg.ConfigFile, " - ", err)
 	}
 
-	// Display configuration
-	fmt.Println("Current directory:", sysCfg.CurPath)
-	fmt.Println("Binary path:", sysCfg.BinPath)
-
 	// Figure out all the experiments that need to be executed
 	experiments := getListExperiments(config)
 
+	// If the user did not specify an output file, we try to implicitly
+	// set a relevant name
+	if sysCfg.OutputFile == "" {
+		// We get the MPI implementation from the list
+		mpiImplem := getMPIImplemFromExperiments(experiments)
+		sysCfg.OutputFile = mpiImplem + "-results.txt"
+	}
+
+	// Display configuration
+	fmt.Println("Current directory:", sysCfg.CurPath)
+	fmt.Println("Binary path:", sysCfg.BinPath)
+	fmt.Println("Output file:", sysCfg.OutputFile)
+
 	// Load the results we already have in result file
-	existingResults, err := results.Load(*outputFile)
+	existingResults, err := results.Load(sysCfg.OutputFile)
 	if err != nil {
 		log.Fatalf("failed to parse output file %s: %s", *outputFile, err)
 	}
-	sysCfg.OutputFile = *outputFile
 
 	// Remove the results we already have from list of experiments to run
 	experimentsToRun := results.Pruning(experiments, existingResults)
