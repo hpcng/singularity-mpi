@@ -9,19 +9,8 @@ TOPDIR := $(PWD)
 
 all:
 	go build main.go
-#	for src in $(SOURCES); do \
-		GOPATH=`pwd` go build $$src; \
-	done
-#	for dir in $(SUBDIRS); do \
-#		cd $(TOPDIR)/$$dir; GOPATH=`pwd` make; \
-#	done
 
 clean:
-	for dir in $(SUBDIRS); do \
-		cd $(TOPDIR)/$$dir; make clean; \
-	done
+	@rm -f main
 
 distclean: clean
-	for dir in $(SUBDIRS); do \
-		cd $(TOPDIR)/$$dir; make distclean; \
-	done
