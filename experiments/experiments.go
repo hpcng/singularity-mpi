@@ -47,6 +47,13 @@ type mpiConfig struct {
 	testPath        string // Path to the test to run within the container
 }
 
+type compileConfig struct {
+	mpiVersionTag string
+	mpiURLTag     string
+	mpiTarballTag string
+	mpiTarArgsTag string
+}
+
 // Experiment is a structure that represents the configuration of an experiment
 type Experiment struct {
 	MPIImplm            string
@@ -98,11 +105,16 @@ func downloadMPI(mpiCfg *mpiConfig) error {
 
 const (
 	formatBZ2 = "bz2"
+	formatGZ  = "gz"
 )
 
 func detectTarballFormat(filepath string) string {
 	if path.Ext(filepath) == ".bz2" {
 		return formatBZ2
+	}
+
+	if path.Ext(filepath) == ".gz" {
+		return formatGZ
 	}
 
 	return ""
@@ -135,6 +147,8 @@ func unpackMPI(mpiCfg *mpiConfig) error {
 	switch format {
 	case formatBZ2:
 		tarArg = "-xjf"
+	case formatGZ:
+		tarArg = "-xzf"
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
 	}
@@ -366,11 +380,7 @@ func copyFile(src string, dst string) error {
 	return nil
 }
 
-func updateMPICHDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
-	return fmt.Errorf("not supported yet (updateMPICHDefFile)")
-}
-
-func updateOMPIDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
+func doUpdateDefFile(myCfg *mpiConfig, sysCfg *SysConfig, compileCfg *compileConfig) error {
 	var err error
 
 	// Sanity checks
@@ -399,19 +409,49 @@ func updateOMPIDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	switch format {
 	case formatBZ2:
 		tarArgs = "-xjf"
+	case formatGZ:
+		tarArgs = "-xzf"
 	default:
 		return fmt.Errorf("un-supported tarball format for %s", myCfg.tarball)
 	}
 
 	content := string(data)
-	content = strings.Replace(content, "OMPIVERSION", myCfg.mpiVersion, -1)
-	content = strings.Replace(content, "OMPIURL", myCfg.url, -1)
-	content = strings.Replace(content, "OMPITARBALL", myCfg.tarball, -1)
+	content = strings.Replace(content, compileCfg.mpiVersionTag, myCfg.mpiVersion, -1)
+	content = strings.Replace(content, compileCfg.mpiURLTag, myCfg.url, -1)
+	content = strings.Replace(content, compileCfg.mpiTarballTag, myCfg.tarball, -1)
 	content = strings.Replace(content, "TARARGS", tarArgs, -1)
 
 	err = ioutil.WriteFile(myCfg.defFile, []byte(content), 0)
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %s", myCfg.defFile, err)
+	}
+
+	return nil
+}
+
+func updateMPICHDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
+	var compileCfg compileConfig
+	compileCfg.mpiVersionTag = "MPICHVERSION"
+	compileCfg.mpiURLTag = "MPICHURL"
+	compileCfg.mpiTarballTag = "MPICHTARBALL"
+
+	err := doUpdateDefFile(myCfg, sysCfg, &compileCfg)
+	if err != nil {
+		return fmt.Errorf("failed to update MPICH definition file")
+	}
+
+	return nil
+}
+
+func updateOMPIDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
+	var compileCfg compileConfig
+	compileCfg.mpiVersionTag = "OMPIVERSION"
+	compileCfg.mpiURLTag = "OMPIURL"
+	compileCfg.mpiTarballTag = "OMPITARBALL"
+
+	err := doUpdateDefFile(myCfg, sysCfg, &compileCfg)
+	if err != nil {
+		return fmt.Errorf("failed to update Open MPI definition file")
 	}
 
 	return nil
@@ -430,7 +470,7 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	case "openmpi":
 		templateFileName = "ubuntu_ompi.def.tmpl"
 		defFileName = "ubuntu_ompi.def"
-	case "MPICH":
+	case "mpich":
 		templateFileName = "ubuntu_mpich.def.tmpl"
 		defFileName = "ubuntu_mpich.def"
 	default:

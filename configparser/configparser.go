@@ -35,6 +35,21 @@ func detectOpenMPIVersion(line string) string {
 	return ""
 }
 
+func detectMPICHVersion(line string) string {
+	if strings.Contains(line, "mpich") {
+		if strings.Contains(line, "tar") {
+			endVersion := strings.Index(line, ".tar")
+			startVersion := strings.Index(line, "mpich-") + 6
+			if startVersion != -1 && endVersion != -1 {
+				return line[startVersion:endVersion]
+			}
+		}
+	}
+
+	// Could not detect anything
+	return ""
+}
+
 func detectMpiImplem(line string) (string, string) {
 	// The line that is passed in has a format similar to: https://download.open-mpi.org/release/open-mpi/v3.0/openmpi-3.0.4.tar.bz2
 	ompiVer := detectOpenMPIVersion(line)
@@ -42,7 +57,10 @@ func detectMpiImplem(line string) (string, string) {
 		return "openmpi", ompiVer
 	}
 
-	// TODO: include the detection of other major MPI implementations
+	mpichVer := detectMPICHVersion(line)
+	if mpichVer != "" {
+		return "mpich", mpichVer
+	}
 
 	return "", ""
 }
