@@ -500,11 +500,13 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 		if err != nil {
 			return fmt.Errorf("failed to update OMPI template: %s", err)
 		}
-	case "MPICH":
+	case "mpich":
 		err := updateMPICHDefFile(myCfg, sysCfg)
 		if err != nil {
 			return fmt.Errorf("failed to update MPICH template: %s", err)
 		}
+	default:
+		return fmt.Errorf("unsupported MPI implementation: %s", myCfg.mpiImplm)
 	}
 
 	return nil
