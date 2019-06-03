@@ -16,15 +16,15 @@ From: ubuntu:latest
     apt-get update && apt-get install -y wget git bash gcc gfortran g++ make
 
     # Information about the version of MPICH to use
-    export MPICH_VERSION=3.3
-    export MPICH_URL="http://www.mpich.org/static/downloads/3.3/mpich-3.3.tar.gz"
+    export MPICH_VERSION=MPICHVERSION
+    export MPICH_URL="MPICHURL"
     export MPICH_DIR=/opt/mpich
 
     echo "Installing MPICH..."
     mkdir -p /tmp/mpich
     mkdir -p /opt
     # Download
-    cd /tmp/mpich && wget -O mpich-$MPICH_VERSION.tar.gz $MPICH_URL && tar xzf mpich-$MPICH_VERSION.tar.gz
+    cd /tmp/mpich && wget $MPICH_URL && tar TARARGS MPICHTARBALL
     # Compile and install
     cd /tmp/mpich/mpich-$MPICH_VERSION && ./configure --prefix=$MPICH_DIR && make -j8 install
     # Set env variables so we can compile our application
