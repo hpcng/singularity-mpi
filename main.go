@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	cfg "singularity-mpi/configparser"
 	exp "singularity-mpi/experiments"
@@ -59,18 +60,18 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 
 	for _, e := range experiments {
 		fmt.Printf("Running experiment with host MPI %s and container MPI %s\n", e.VersionHostMPI, e.VersionContainerMPI)
-		success, err := exp.Run(e, sysCfg)
+		success, note, err := exp.Run(e, sysCfg)
 		if err != nil {
 			fmt.Printf("WARNING! Cannot run experiment: %s", err)
-			f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tERROR\n")
+			f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tERROR\t" + note + "\n")
 		} else {
 			if success {
 				fmt.Println("Experiment succeeded")
-				f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tPASS\n")
+				f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tPASS\t" + note + "\n")
 				f.Sync()
 			} else {
 				fmt.Println("Experiment failed")
-				f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\n")
+				f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\t" + note + "\n")
 				f.Sync()
 			}
 		}
@@ -100,6 +101,7 @@ func main() {
 	configFile := flag.String("configfile", sysCfg.BinPath+"/etc/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
 	outputFile := flag.String("outputFile", "", "Full path to the output file")
 	verbose := flag.Bool("v", false, "Enable/disable verbosity")
+	netpipe := flag.Bool("netpipe", false, "Perform NetPipe rather than a basic hello world test")
 
 	flag.Parse()
 
@@ -109,6 +111,7 @@ func main() {
 	}
 	sysCfg.ConfigFile = *configFile
 	sysCfg.OutputFile = *outputFile
+	sysCfg.NetPipe = *netpipe
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
@@ -130,6 +133,7 @@ func main() {
 	fmt.Println("Current directory:", sysCfg.CurPath)
 	fmt.Println("Binary path:", sysCfg.BinPath)
 	fmt.Println("Output file:", sysCfg.OutputFile)
+	fmt.Println("Running NetPipe:", strconv.FormatBool(sysCfg.NetPipe))
 
 	// Load the results we already have in result file
 	existingResults, err := results.Load(sysCfg.OutputFile)

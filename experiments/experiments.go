@@ -7,6 +7,7 @@ package experiments
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -14,7 +15,9 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // SysConfig captures some system configuration aspects that are necessary
@@ -27,6 +30,7 @@ type SysConfig struct {
 	SedBin         string // Path to the sed binary
 	SingularityBin string // Path to the singularity binary
 	OutputFile     string // Path the output file
+	NetPipe        bool   // Execute NetPipe as test
 }
 
 type mpiConfig struct {
@@ -237,8 +241,31 @@ func compileMPI(mpiCfg *mpiConfig) error {
 	return nil
 }
 
+func cleanupString(str string) string {
+	// Remove all color escape sequences from string
+	reg := regexp.MustCompile(`\\x1b\[[0-9]+m`)
+	str = reg.ReplaceAllString(str, "")
+
+	str = strings.Replace(str, `\x1b`+"[0m", "", -1)
+	return strings.Replace(str, `\x1b`+"[33m", "", -1)
+}
+
+func postExecutionDataMgt(exp Experiment, sysCfg *SysConfig, output string) (string, error) {
+	if sysCfg.NetPipe {
+		lines := strings.Split(output, "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "Completed with") {
+				tokens := strings.Split(line, " ")
+				note := "max bandwidth: " + cleanupString(tokens[13]) + " " + cleanupString(tokens[14]) + "; latency: " + cleanupString(tokens[20]) + " " + cleanupString(tokens[21])
+				return note, nil
+			}
+		}
+	}
+	return "", nil
+}
+
 // Run configure, install and execute a given experiment
-func Run(exp Experiment, sysCfg *SysConfig) (bool, error) {
+func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	var myHostMPICfg mpiConfig
 	var myContainerMPICfg mpiConfig
 	var err error
@@ -248,14 +275,14 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, error) {
 	// Create a temporary directory where to compile MPI
 	myHostMPICfg.buildDir, err = ioutil.TempDir("", "mpi_build_"+exp.VersionHostMPI+"-")
 	if err != nil {
-		return false, fmt.Errorf("failed to create compile directory: %s", err)
+		return false, "", fmt.Errorf("failed to create compile directory: %s", err)
 	}
 	defer os.RemoveAll(myHostMPICfg.buildDir)
 
 	// Create a temporary directory where to install MPI
 	myHostMPICfg.installDir, err = ioutil.TempDir("", "mpi_install_"+exp.VersionHostMPI+"-")
 	if err != nil {
-		return false, fmt.Errorf("failed to create install directory: %s", err)
+		return false, "", fmt.Errorf("failed to create install directory: %s", err)
 	}
 	defer os.RemoveAll(myHostMPICfg.installDir)
 
@@ -275,7 +302,7 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, error) {
 	// Cretae a temporary directory where the container will be built
 	myContainerMPICfg.buildDir, err = ioutil.TempDir("", "mpi_container_"+exp.VersionContainerMPI+"-")
 	if err != nil {
-		return false, fmt.Errorf("failed to create directory to build container: %s", err)
+		return false, "", fmt.Errorf("failed to create directory to build container: %s", err)
 	}
 	defer os.RemoveAll(myContainerMPICfg.buildDir)
 
@@ -291,35 +318,48 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, error) {
 
 	err = installHostMPI(&myHostMPICfg)
 	if err != nil {
-		return false, fmt.Errorf("failed to install host MPI: %s", err)
+		return false, "", fmt.Errorf("failed to install host MPI: %s", err)
 	}
 
 	err = createMPIContainer(&myContainerMPICfg, sysCfg)
 	if err != nil {
-		return false, fmt.Errorf("failed to create container: %s", err)
+		return false, "", fmt.Errorf("failed to create container: %s", err)
 	}
 
 	/* PREPARE THE COMMAND TO RUN THE ACTUAL TEST */
 
 	fmt.Println("Running Test(s)...")
+	// We only let the mpirun command for 10 minutes max
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
 	var stdout, stderr bytes.Buffer
 	newPath := myHostMPICfg.installDir + "/bin:" + os.Getenv("PATH")
 	newLDPath := myHostMPICfg.installDir + "/lib:" + os.Getenv("LD_LIBRARY_PATH")
+
 	mpirunBin := filepath.Join(myHostMPICfg.installDir, "bin", "mpirun")
-	mpiCmd := exec.Command(mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
+	mpiCmd := exec.CommandContext(ctx, mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
 	mpiCmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
 	mpiCmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
 	mpiCmd.Stdout = &stdout
 	mpiCmd.Stderr = &stderr
 	err = mpiCmd.Run()
-	if err != nil {
+	if err != nil || ctx.Err() == context.DeadlineExceeded {
 		fmt.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
-		return false, nil
+		return false, "", nil
 	}
 
 	fmt.Printf("Successful run - stdout: %s; stderr: %s\n", stdout.String(), stderr.String())
 
-	return true, nil
+	fmt.Println("Handling data...")
+	note, err := postExecutionDataMgt(exp, sysCfg, stdout.String())
+	if err != nil {
+		return true, "", fmt.Errorf("failed to handle data: %s", err)
+	}
+
+	fmt.Println("NOTE: ", note)
+
+	return true, note, nil
 }
 
 func installHostMPI(myCfg *mpiConfig) error {
@@ -468,11 +508,21 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	var templateFileName string
 	switch myCfg.mpiImplm {
 	case "openmpi":
-		templateFileName = "ubuntu_ompi.def.tmpl"
-		defFileName = "ubuntu_ompi.def"
+		if sysCfg.NetPipe {
+			templateFileName = "ubuntu_ompi_netpipe.def.tmpl"
+			defFileName = "ubuntu_ompi_netpipe.def"
+		} else {
+			templateFileName = "ubuntu_ompi.def.tmpl"
+			defFileName = "ubuntu_ompi.def"
+		}
 	case "mpich":
-		templateFileName = "ubuntu_mpich.def.tmpl"
-		defFileName = "ubuntu_mpich.def"
+		if sysCfg.NetPipe {
+			templateFileName = "ubuntu_mpich_netpipe.def.tmpl"
+			defFileName = "ubuntu_mpich_netpipe.def"
+		} else {
+			templateFileName = "ubuntu_mpich.def.tmpl"
+			defFileName = "ubuntu_mpich.def"
+		}
 	default:
 		return fmt.Errorf("unsupported MPI implementation: %s", myCfg.mpiImplm)
 	}
@@ -548,7 +598,11 @@ func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
 		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
 	}
 
-	myCfg.testPath = filepath.Join("/", "opt", "mpitest")
+	if sysCfg.NetPipe {
+		myCfg.testPath = filepath.Join("/", "opt", "NetPIPE-5.1.4", "NPmpi")
+	} else {
+		myCfg.testPath = filepath.Join("/", "opt", "mpitest")
+	}
 
 	return nil
 }
