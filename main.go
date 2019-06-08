@@ -51,10 +51,15 @@ func getMPIImplemFromExperiments(experiments []exp.Experiment) string {
 
 func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 	var results []results.Result
-	// FIXME: do not always create
-	f, err := os.Create(sysCfg.OutputFile)
+
+	/* Sanity checks */
+	if sysCfg == nil || sysCfg.OutputFile == "" {
+		log.Fatalf("invalid parameter(s)")
+	}
+
+	f, err := os.OpenFile(sysCfg.OutputFile, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
-		log.Fatalf("failed to open %s: %s", sysCfg.OutputFile, err)
+		log.Fatalf("failed to open file %s: %s", sysCfg.OutputFile, err)
 	}
 	defer f.Close()
 
@@ -63,15 +68,24 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 		success, note, err := exp.Run(e, sysCfg)
 		if err != nil {
 			fmt.Printf("WARNING! Cannot run experiment: %s", err)
-			f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tERROR\t" + note + "\n")
+			_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tERROR\t" + note + "\n")
+			if err != nil {
+				log.Fatalf("failed to write result: %s", err)
+			}
 		} else {
 			if success {
 				fmt.Println("Experiment succeeded")
-				f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tPASS\t" + note + "\n")
+				_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tPASS\t" + note + "\n")
+				if err != nil {
+					log.Fatalf("failed to write result: %s", err)
+				}
 				f.Sync()
 			} else {
 				fmt.Println("Experiment failed")
-				f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\t" + note + "\n")
+				_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\t" + note + "\n")
+				if err != nil {
+					log.Fatalf("failed to write result: %s", err)
+				}
 				f.Sync()
 			}
 		}

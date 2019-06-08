@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	exp "singularity-mpi/experiments"
-	"strconv"
 	"strings"
 )
 
@@ -20,26 +19,11 @@ type Result struct {
 	pass       bool
 }
 
-// Write stores in a file the content of an array of results
-func Write(outputFile string, results []Result) error {
-	f, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("cannot create file: %s", err)
-	}
-	defer f.Close()
-
-	writer := bufio.NewWriter(f)
-
-	for _, result := range results {
-		fmt.Fprintf(writer, "%s %s %v\n", result.experiment.VersionHostMPI, result.experiment.VersionContainerMPI, result.pass)
-	}
-
-	return nil
-}
-
 // Load reads a output file and load the list of experiments that are in the file
 func Load(outputFile string) ([]Result, error) {
 	var existingResults []Result
+
+	fmt.Println ("Reading results from", outputFile)
 
 	f, err := os.Open(outputFile)
 	if err != nil {
@@ -55,13 +39,21 @@ func Load(outputFile string) ([]Result, error) {
 
 	for lineReader.Scan() {
 		line := lineReader.Text()
-		words := strings.Split(line, " ")
+		words := strings.Split(line, "\t")
 		var newResult Result
+		if len(words) < 3 {
+			return existingResults, fmt.Errorf("invalid format: %s", line)
+		}
 		newResult.experiment.VersionHostMPI = words[0]
 		newResult.experiment.VersionContainerMPI = words[1]
-		newResult.pass, err = strconv.ParseBool(words[2])
-		if err != nil {
-			return existingResults, fmt.Errorf("error while parsing result file %s :%s", outputFile, err)
+		result := words[2]
+		switch (result) {
+			case "PASS":
+				newResult.pass = true
+			case "FAIL":
+				newResult.pass = false
+			default:
+				return existingResults, fmt.Errorf("invalid experiment result: %s", result)
 		}
 		existingResults = append(existingResults, newResult)
 	}
@@ -78,6 +70,7 @@ func Pruning(experiments []exp.Experiment, existingResults []Result) []exp.Exper
 		found := false
 		for _, result := range existingResults {
 			if experiment.VersionHostMPI == result.experiment.VersionHostMPI && experiment.VersionContainerMPI == result.experiment.VersionContainerMPI {
+				fmt.Println ("We already have results for %s on the host and %s in a container, skipping...\n", experiment.VersionHostMPI, experiment.VersionContainerMPI)
 				found = true
 				break
 			}
