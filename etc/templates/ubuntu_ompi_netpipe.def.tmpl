@@ -1,9 +1,6 @@
 Bootstrap: docker
 From: ubuntu:disco
 
-%files
-    mpitest.c /opt
-
 %environment
     OMPI_DIR=/opt/ompi-OMPIVERSION
     export OMPI_DIR
