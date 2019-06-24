@@ -329,7 +329,7 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	/* PREPARE THE COMMAND TO RUN THE ACTUAL TEST */
 
 	fmt.Println("Running Test(s)...")
-	// We only let the mpirun command for 10 minutes max
+	// We only let the mpirun command run for 10 minutes max
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
