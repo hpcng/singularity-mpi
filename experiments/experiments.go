@@ -91,9 +91,9 @@ func downloadMPI(mpiCfg *mpiConfig) error {
 		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 	}
 
-	// FIXME we currently assume that we one and only file in the directory
-	// This is not a fair assumption, especially while debugging when we do
-	// not wipe out the temporary directories
+	// FIXME we currently assume that we have one and only one file in the
+	// directory This is not a fair assumption, especially while debugging
+	// when we do not wipe out the temporary directories
 	files, err := ioutil.ReadDir(mpiCfg.buildDir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %s", mpiCfg.buildDir, err)
