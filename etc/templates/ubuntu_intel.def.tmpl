@@ -1,0 +1,36 @@
+Bootstrap: docker
+From: ubuntu:disco
+
+%files
+    mpitest.c /opt
+    IMPITARBALL /tmp
+    IMPIINSTALLCONFFILE /tmp
+    IMPIUNINSTALLCONFFILE /tmp
+
+%environment
+    IMPI_DIR=/opt/impi/compilers_and_libraries/linux/mpi/intel64
+    export IMPI_DIR
+    export SINGULARITY_IMPI_DIR=$IMPI_DIR
+    export SINGULARITYENV_APPEND_PATH=$IMPI_DIR/bin
+    export SINGULAIRTYENV_APPEND_LD_LIBRARY_PATH=$IMPI_DIR/lib
+
+%post
+    echo "Installing required packages..."
+    apt-get update && apt-get install -y apt-utils wget git bash gcc gfortran g++ make file cpio
+
+    # Information about the version of MPICH to use
+    export IMPI_VERSION=IMPIVERSION
+    export IMPI_DIR=/opt/impi/compilers_and_libraries/linux/mpi/intel64
+    export LIBFABRIC_DIR=/opt/impi/compilers_and_libraries/linux/mpi/intel64/libfabric
+
+    echo "Installing Intel MPI..."
+    mkdir -p /opt
+    # Compile and install
+    cd /tmp && tar -xf IMPIVERSION.tar && cd /tmp/IMPIVERSION && cp ../silent_install.cfg ../silent_uninstall.cfg . && ./install.sh --silent silent_install.cfg
+    # Set env variables so we can compile our application
+    export PATH=$IMPI_DIR/bin:$PATH
+    export LD_LIBRARY_PATH=$IMPI_DIR/lib:$LIBFABRIC_DIR/lib:$LD_LIBRARY_PATH
+    export MANPATH=$IMPI_DIR/share/man:$MANPATH
+
+    echo "Compiling the MPI application..."
+    cd /opt && mpicc -o mpitest mpitest.c

@@ -21,8 +21,8 @@ type Config struct {
 }
 
 func detectOpenMPIVersion(line string) string {
-	if strings.Contains(line, "openmpi") {
-		if strings.Contains(line, "tar") {
+	if strings.Contains(line, "openmpi-") {
+		if strings.Contains(line, ".tar") {
 			endVersion := strings.Index(line, ".tar")
 			startVersion := strings.Index(line, "openmpi-") + 8
 			if startVersion != -1 && endVersion != -1 {
@@ -36,10 +36,25 @@ func detectOpenMPIVersion(line string) string {
 }
 
 func detectMPICHVersion(line string) string {
-	if strings.Contains(line, "mpich") {
-		if strings.Contains(line, "tar") {
+	if strings.Contains(line, "mpich-") {
+		if strings.Contains(line, ".tar") {
 			endVersion := strings.Index(line, ".tar")
 			startVersion := strings.Index(line, "mpich-") + 6
+			if startVersion != -1 && endVersion != -1 {
+				return line[startVersion:endVersion]
+			}
+		}
+	}
+
+	// Could not detect anything
+	return ""
+}
+
+func detectIntelMPIVersion(line string) string {
+	if strings.Contains(line, "l_mpi_") {
+		if strings.Contains(line, ".tar") {
+			endVersion := strings.Index(line, ".tar")
+			startVersion := strings.Index(line, "l_mpi_")
 			if startVersion != -1 && endVersion != -1 {
 				return line[startVersion:endVersion]
 			}
@@ -60,6 +75,11 @@ func detectMpiImplem(line string) (string, string) {
 	mpichVer := detectMPICHVersion(line)
 	if mpichVer != "" {
 		return "mpich", mpichVer
+	}
+
+	intelVer := detectIntelMPIVersion(line)
+	if intelVer != "" {
+		return "intel", intelVer
 	}
 
 	return "", ""
