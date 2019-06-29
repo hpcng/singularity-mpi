@@ -29,7 +29,7 @@ From: ubuntu:disco
     cd /tmp/ompi/openmpi-$OMPI_VERSION && ./configure --prefix=$OMPI_DIR && make -j8 install
     # Set env variables so we can compile our application
     export PATH=$OMPI_DIR/bin:$PATH
-    export LD_LIBRARY_PAtH=$OMPI_DIR/lib:$LD_LIBRARY_PATH
+    export LD_LIBRARY_PATH=$OMPI_DIR/lib:$LD_LIBRARY_PATH
     export MANPATH=$OMPI_DIR/share/man:$MANPATH
 
     echo "Compiling the MPI application..."
