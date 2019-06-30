@@ -11,7 +11,7 @@ Finally, check-out the source code: `cd $HOME/go/src/ && git clone https://githu
 # Compilation
 
 To compile the tool, you just need to execute the following command from the top directory of the source code: `cd $HOME/go/src/singularity-mpi && make`.
-This will generate a `main` binary that can be used to run various experients. To display the help message, simply run the `main -h` command.
+This will generate a `main` binary that can be used to run various experients. To display the help message, simply run the `./main -h` command.
 
 # Experiments
 
