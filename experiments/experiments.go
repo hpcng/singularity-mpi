@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -68,7 +69,7 @@ type Experiment struct {
 }
 
 func downloadMPI(mpiCfg *mpiConfig) error {
-	fmt.Println("- Downloading MPI...")
+	log.Println("- Downloading MPI...")
 
 	// Sanity checks
 	if mpiCfg.url == "" || mpiCfg.buildDir == "" {
@@ -125,7 +126,7 @@ func detectTarballFormat(filepath string) string {
 }
 
 func unpackMPI(mpiCfg *mpiConfig) error {
-	fmt.Println("- Unpacking MPI...")
+	log.Println("- Unpacking MPI...")
 
 	// Sanity checks
 	if mpiCfg.srcPath == "" || mpiCfg.buildDir == "" {
@@ -188,7 +189,7 @@ func unpackMPI(mpiCfg *mpiConfig) error {
 }
 
 func configureMPI(mpiCfg *mpiConfig) error {
-	fmt.Println("- Configuring MPI...")
+	log.Println("- Configuring MPI...")
 
 	// Some sanity checks
 	if mpiCfg.srcDir == "" || mpiCfg.installDir == "" {
@@ -209,7 +210,7 @@ func configureMPI(mpiCfg *mpiConfig) error {
 }
 
 func compileMPI(mpiCfg *mpiConfig) error {
-	fmt.Println("- Compiling MPI...")
+	log.Println("- Compiling MPI...")
 
 	// Some sanity checks
 	if mpiCfg.srcDir == "" {
@@ -290,12 +291,12 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	myHostMPICfg.url = exp.URLHostMPI
 	myHostMPICfg.mpiVersion = exp.VersionHostMPI
 
-	fmt.Println("* Host MPI Configuration *")
-	fmt.Println("-> Building MPI in", myHostMPICfg.buildDir)
-	fmt.Println("-> Installing MPI in", myHostMPICfg.installDir)
-	fmt.Println("-> MPI implementation:", myHostMPICfg.mpiImplm)
-	fmt.Println("-> MPI version:", myHostMPICfg.mpiVersion)
-	fmt.Println("-> MPI URL:", myHostMPICfg.url)
+	log.Println("* Host MPI Configuration *")
+	log.Println("-> Building MPI in", myHostMPICfg.buildDir)
+	log.Println("-> Installing MPI in", myHostMPICfg.installDir)
+	log.Println("-> MPI implementation:", myHostMPICfg.mpiImplm)
+	log.Println("-> MPI version:", myHostMPICfg.mpiVersion)
+	log.Println("-> MPI URL:", myHostMPICfg.url)
 
 	/* CREATE THE CONTAINER MPI CONFIGURATION */
 
@@ -310,11 +311,11 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	myContainerMPICfg.url = exp.URLContainerMPI
 	myContainerMPICfg.mpiVersion = exp.VersionContainerMPI
 
-	fmt.Println("* Container MPI configuration *")
-	fmt.Println("-> Build container in", myContainerMPICfg.buildDir)
-	fmt.Println("-> MPI implementation:", myContainerMPICfg.mpiImplm)
-	fmt.Println("-> MPI version:", myContainerMPICfg.mpiVersion)
-	fmt.Println("-> MPI URL:", myContainerMPICfg.url)
+	log.Println("* Container MPI configuration *")
+	log.Println("-> Build container in", myContainerMPICfg.buildDir)
+	log.Println("-> MPI implementation:", myContainerMPICfg.mpiImplm)
+	log.Println("-> MPI version:", myContainerMPICfg.mpiVersion)
+	log.Println("-> MPI URL:", myContainerMPICfg.url)
 
 	err = installHostMPI(&myHostMPICfg)
 	if err != nil {
@@ -328,7 +329,7 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 
 	/* PREPARE THE COMMAND TO RUN THE ACTUAL TEST */
 
-	fmt.Println("Running Test(s)...")
+	log.Println("Running Test(s)...")
 	// We only let the mpirun command run for 10 minutes max
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
@@ -345,25 +346,25 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	mpiCmd.Stderr = &stderr
 	err = mpiCmd.Run()
 	if err != nil || ctx.Err() == context.DeadlineExceeded {
-		fmt.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
+		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
 		return false, "", nil
 	}
 
-	fmt.Printf("Successful run - stdout: %s; stderr: %s\n", stdout.String(), stderr.String())
+	log.Printf("Successful run - stdout: %s; stderr: %s\n", stdout.String(), stderr.String())
 
-	fmt.Println("Handling data...")
+	log.Println("Handling data...")
 	note, err := postExecutionDataMgt(exp, sysCfg, stdout.String())
 	if err != nil {
 		return true, "", fmt.Errorf("failed to handle data: %s", err)
 	}
 
-	fmt.Println("NOTE: ", note)
+	log.Println("NOTE: ", note)
 
 	return true, note, nil
 }
 
 func installHostMPI(myCfg *mpiConfig) error {
-	fmt.Println("Installing MPI on host...")
+	log.Println("Installing MPI on host...")
 	err := downloadMPI(myCfg)
 	if err != nil {
 		return fmt.Errorf("failed to download MPI from %s: %s", myCfg.url, err)
@@ -498,7 +499,7 @@ func updateOMPIDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 }
 
 func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
-	fmt.Println("- Generating Singularity defintion file...")
+	log.Println("- Generating Singularity defintion file...")
 	// Sanity checks
 	if myCfg.buildDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
@@ -565,7 +566,7 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	var err error
 
-	fmt.Println("- Creating image...")
+	log.Println("- Creating image...")
 	// Some sanity checks
 	if myCfg.buildDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
@@ -609,7 +610,7 @@ func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
 
 // CreateMPIContainer creates a container based on a specific configuration.
 func createMPIContainer(myCfg *mpiConfig, sysCfg *SysConfig) error {
-	fmt.Println("Creating MPI container...")
+	log.Println("Creating MPI container...")
 	err := generateDefFile(myCfg, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to generate Singularity definition file: %s", err)

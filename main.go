@@ -7,7 +7,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -64,24 +64,24 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 	defer f.Close()
 
 	for _, e := range experiments {
-		fmt.Printf("Running experiment with host MPI %s and container MPI %s\n", e.VersionHostMPI, e.VersionContainerMPI)
+		log.Printf("Running experiment with host MPI %s and container MPI %s\n", e.VersionHostMPI, e.VersionContainerMPI)
 		success, note, err := exp.Run(e, sysCfg)
 		if err != nil {
-			fmt.Printf("WARNING! Cannot run experiment: %s", err)
+			log.Printf("WARNING! Cannot run experiment: %s", err)
 			_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tERROR\t" + note + "\n")
 			if err != nil {
 				log.Fatalf("failed to write result: %s", err)
 			}
 		} else {
 			if success {
-				fmt.Println("Experiment succeeded")
+				log.Println("Experiment succeeded")
 				_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tPASS\t" + note + "\n")
 				if err != nil {
 					log.Fatalf("failed to write result: %s", err)
 				}
 				f.Sync()
 			} else {
-				fmt.Println("Experiment failed")
+				log.Println("Experiment failed")
 				_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\t" + note + "\n")
 				if err != nil {
 					log.Fatalf("failed to write result: %s", err)
@@ -132,6 +132,19 @@ func main() {
 		log.Fatal("cannot parse", sysCfg.ConfigFile, " - ", err)
 	}
 
+	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
+	logFile, err := os.OpenFile("singularity-mpi.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("failed to create log file: %s", err)
+	}
+	defer logFile.Close()
+	if *verbose {
+		nultiWriters := io.MultiWriter(os.Stdout, logFile)
+		log.SetOutput(nultiWriters)
+	} else {
+		log.SetOutput(logFile)
+	}
+
 	// Figure out all the experiments that need to be executed
 	experiments := getListExperiments(config)
 
@@ -144,10 +157,10 @@ func main() {
 	}
 
 	// Display configuration
-	fmt.Println("Current directory:", sysCfg.CurPath)
-	fmt.Println("Binary path:", sysCfg.BinPath)
-	fmt.Println("Output file:", sysCfg.OutputFile)
-	fmt.Println("Running NetPipe:", strconv.FormatBool(sysCfg.NetPipe))
+	log.Println("Current directory:", sysCfg.CurPath)
+	log.Println("Binary path:", sysCfg.BinPath)
+	log.Println("Output file:", sysCfg.OutputFile)
+	log.Println("Running NetPipe:", strconv.FormatBool(sysCfg.NetPipe))
 
 	// Load the results we already have in result file
 	existingResults, err := results.Load(sysCfg.OutputFile)
