@@ -28,7 +28,7 @@ The version of a given MPI implementation to be used throughout the experiment i
 configuration file for Open MPI is available in `etc/openmpi.conf` and a default configuration file for MPICH is available in `etc/mpich.conf`. Users *must* 
 specify the configuration file on the command line when running the tool (see examples). 
 
-Once you've tested the tool, view the ``opnempi-results.txt``/``mpich-results.txt`` to view results of various combinations of the versions and pick the 
+Once the tool has completed, view the ``openmpi-results.txt``/``mpich-results.txt`` to view results of various combinations of the versions and pick the 
 host-container version combination most suitable to you.
 
 ---
