@@ -56,6 +56,10 @@ host-container version combination most suitable to you.
 
 ``./main -configfile `pwd`/etc/mpich.conf -netpipe``
 
-These commands will run basic MPI programs (HelloWorld, points-to-point tests) to test the compatibility between different versions. However, more tests will 
+These commands will run various MPI programs to test the compatibility between different versions:
+- a basic HelloWorld test,
+- NetPipe for points-to-point communications.
+
+More tests will 
 be included over time.
 
