@@ -1,6 +1,6 @@
 # Singularity-mpi
 
-This tool aims at running numerous experiments whose results are all aggregated to create a compatibility matrix for a given MPI implementation(OpenMPI or 
+This tool aims at running numerous experiments whose results are all aggregated to create a compatibility matrix for a given MPI implementation (e.g., OpenMPI or 
 MPICH). In other terms, this tool will run different configurations of MPI on the host and within a container and check whether specific MPI applications/tests/benchmarks
 succeed. This is not meant to create an exhaustive compatibility matrix but rather an idea of what to expect since many parameters can impact the overall 
 results (e.g., configuration of the host, configuration of the MPI implementation).
