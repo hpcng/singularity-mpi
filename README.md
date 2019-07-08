@@ -10,15 +10,17 @@ Finally, check-out the source code: `cd $HOME/go/src/ && git clone https://githu
 
 # Preparation of the host system
 
-The tool relies heavily on the singularity command line for the creation of images. That command is invoked with sudo, virtually requiring users to enter their password for every single experiment the tool is executing. When considering that the tool may run dozens of experiments over several hours, having to enter a password for every image creation is quickly cumbersome and potentially a source of unexpected failres. It is therefore strongly encouraged to setup sudo so that a password is not requested when executing singularity commands. To do so, update your sudo configuration as follow:
+The tool relies heavily on the `singularity` command line for the creation of images. That command is invoked with `sudo`, virtually requiring users to enter their password for every single experiment the tool is executing. When considering that the tool may run dozens of experiments over several hours, having to enter a password for every image creation is quickly cumbersome and potentially a source of unexpected failres. It is therefore strongly encouraged to setup `sudo` so that a password is not requested when executing `singularity` commands. To do so, update your `sudo` configuration as follow:
 
 Execute:
+```
 sudo visudo
+```
 
-Add a line at the end of your sudo configuration file (warning, if the line is not added at the end of the file, another rule may overload it) as follow, assuming that singularity is installed in /usr/local:
-
+Add a line at the end of your `sudo` configuration file (warning, if the line is not added at the end of the file, another rule may overwrite it) as follow, assuming that `singularity` is installed in `/usr/local`:
+```
 <userid>    ALL=(root)  NOPASSWD: /usr/local/bin/singularity
-
+```
 # Compilation
 
 To compile the tool, you just need to execute the following command from the top directory of the source code: `cd $HOME/go/src/singularity-mpi && make`.
