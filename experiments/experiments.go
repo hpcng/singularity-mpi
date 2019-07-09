@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -26,11 +27,14 @@ type SysConfig struct {
 	ConfigFile     string // Path to the configuration file describing experiments
 	BinPath        string // Path to the current binary
 	CurPath        string // Current path
+	EtcDir         string // Path to the directory with the configuration files
 	TemplateDir    string // Where the template are
 	SedBin         string // Path to the sed binary
 	SingularityBin string // Path to the singularity binary
 	OutputFile     string // Path the output file
 	NetPipe        bool   // Execute NetPipe as test
+	OfiCfgFile     string // Absolute path to the OFI configuration file
+	Ifnet          string // Network interface to use (e.g., required to setup OFI)
 }
 
 type mpiConfig struct {
@@ -87,6 +91,10 @@ const (
 	intelUninstallConfFile         = "silent_uninstall.cfg"
 	intelInstallConfFileTemplate   = intelInstallConfFile + ".tmpl"
 	intelUninstallConfFileTemplate = intelUninstallConfFile + ".tmpl"
+)
+
+const (
+	cmdTimeout = 10
 )
 
 func detectURLType(url string) string {
@@ -463,10 +471,19 @@ func getEnvLDPath(mpiCfg *mpiConfig) string {
 func getPathToMpirun(mpiCfg *mpiConfig) string {
 	// Intel MPI is installing the binaries and libraries in a quite complex setup
 	if mpiCfg.mpiImplm == "intel" {
-		return filepath.Join(mpiCfg.buildDir, intelInstallPathPrefix, "bin/mpirun")
+		return filepath.Join(mpiCfg.buildDir, intelInstallPathPrefix, "bin/mpiexec")
 	}
 
 	return filepath.Join(mpiCfg.installDir, "bin", "mpirun")
+}
+
+func getExtraMpirunArgs(mpiCfg *mpiConfig) []string {
+	// Intel MPI is based on OFI so even for a simple TCP test, we need some extra arguments
+	if mpiCfg.mpiImplm == "intel" {
+		return []string{"-env", "FI_PROVIDER", "socket", "-env", "I_MPI_FABRICS", "ofi"}
+	}
+
+	return []string{""}
 }
 
 // Run configure, install and execute a given experiment
@@ -509,7 +526,7 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	if err != nil {
 		return false, "", fmt.Errorf("failed to create directory to build container: %s", err)
 	}
-	//defer os.RemoveAll(myContainerMPICfg.buildDir)
+	defer os.RemoveAll(myContainerMPICfg.buildDir)
 
 	myContainerMPICfg.mpiImplm = exp.MPIImplm
 	myContainerMPICfg.url = exp.URLContainerMPI
@@ -540,21 +557,31 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 
 	fmt.Println("Running Test(s)...")
 	// We only let the mpirun command run for 10 minutes max
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout*time.Minute)
 	defer cancel()
+
+	// Regex to catch errors where mpirun returns 0 but is known to have failed because displaying the help message
+	var re = regexp.MustCompile(`^(\n?)Usage:`)
 
 	var stdout, stderr bytes.Buffer
 	newPath := getEnvPath(&myHostMPICfg)
 	newLDPath := getEnvLDPath(&myHostMPICfg)
 
 	mpirunBin := getPathToMpirun(&myHostMPICfg)
-	mpiCmd := exec.CommandContext(ctx, mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
+	extraArgs := getExtraMpirunArgs(&myHostMPICfg)
+
+	cmdArgs := append(extraArgs, "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
+	//	mpiCmd := exec.CommandContext(ctx, mpirunBin, "-env", "FI_PROVIDER", "socket", "-env", "I_MPI_FABRICS", "ofi", "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
+	mpiCmd := exec.CommandContext(ctx, mpirunBin, cmdArgs...)
 	mpiCmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
 	mpiCmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
 	mpiCmd.Stdout = &stdout
 	mpiCmd.Stderr = &stderr
+	log.Printf("-> Running: %s %s", mpirunBin, strings.Join(cmdArgs, " "))
+	log.Printf("-> PATH=%s", newPath)
+	log.Printf("-> LD_LIBRARY_PATH=%s\n", newLDPath)
 	err = mpiCmd.Run()
-	if err != nil || ctx.Err() == context.DeadlineExceeded {
+	if err != nil || ctx.Err() == context.DeadlineExceeded || re.Match([]byte(stdout.String())) {
 		fmt.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
 		return false, "", nil
 	}
@@ -768,6 +795,7 @@ func updateIntelMPIDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	content = strings.Replace(content, "IMPIDIR", filepath.Join(containerIMPIInstallDir, mpiCfg.mpiVersion, intelInstallPathPrefix), -1)
 	content = strings.Replace(content, "IMPIINSTALLCONFFILE", intelInstallConfFile, -1)
 	content = strings.Replace(content, "IMPIUNINSTALLCONFFILE", intelUninstallConfFile, -1)
+	content = strings.Replace(content, "NETWORKINTERFACE", sysCfg.Ifnet, -1)
 
 	err = ioutil.WriteFile(mpiCfg.defFile, []byte(content), 0)
 	if err != nil {
@@ -915,9 +943,13 @@ func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
 
 	myCfg.containerPath = filepath.Join(myCfg.buildDir, imgName)
 
+	// We only let the mpirun command run for 10 minutes max
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout*2*time.Minute)
+	defer cancel()
+
 	// The definition file is ready so we simple build the container using the Singularity command
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(sudoBin, sysCfg.SingularityBin, "build", imgName, myCfg.defFile)
+	cmd := exec.CommandContext(ctx, sudoBin, sysCfg.SingularityBin, "build", imgName, myCfg.defFile)
 	cmd.Dir = myCfg.buildDir
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
