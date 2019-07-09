@@ -8,6 +8,7 @@ package results
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	exp "singularity-mpi/experiments"
 	"strings"
@@ -23,7 +24,7 @@ type Result struct {
 func Load(outputFile string) ([]Result, error) {
 	var existingResults []Result
 
-	fmt.Println("Reading results from", outputFile)
+	log.Println("Reading results from", outputFile)
 
 	f, err := os.Open(outputFile)
 	if err != nil {
@@ -70,7 +71,7 @@ func Pruning(experiments []exp.Experiment, existingResults []Result) []exp.Exper
 		found := false
 		for _, result := range existingResults {
 			if experiment.VersionHostMPI == result.experiment.VersionHostMPI && experiment.VersionContainerMPI == result.experiment.VersionContainerMPI {
-				fmt.Printf("We already have results for %s on the host and %s in a container, skipping...\n", experiment.VersionHostMPI, experiment.VersionContainerMPI)
+				log.Printf("We already have results for %s on the host and %s in a container, skipping...\n", experiment.VersionHostMPI, experiment.VersionContainerMPI)
 				found = true
 				break
 			}
