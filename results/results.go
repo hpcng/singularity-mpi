@@ -23,7 +23,7 @@ type Result struct {
 func Load(outputFile string) ([]Result, error) {
 	var existingResults []Result
 
-	fmt.Println ("Reading results from", outputFile)
+	fmt.Println("Reading results from", outputFile)
 
 	f, err := os.Open(outputFile)
 	if err != nil {
@@ -47,13 +47,13 @@ func Load(outputFile string) ([]Result, error) {
 		newResult.experiment.VersionHostMPI = words[0]
 		newResult.experiment.VersionContainerMPI = words[1]
 		result := words[2]
-		switch (result) {
-			case "PASS":
-				newResult.pass = true
-			case "FAIL":
-				newResult.pass = false
-			default:
-				return existingResults, fmt.Errorf("invalid experiment result: %s", result)
+		switch result {
+		case "PASS":
+			newResult.pass = true
+		case "FAIL":
+			newResult.pass = false
+		default:
+			return existingResults, fmt.Errorf("invalid experiment result: %s", result)
 		}
 		existingResults = append(existingResults, newResult)
 	}
@@ -70,7 +70,7 @@ func Pruning(experiments []exp.Experiment, existingResults []Result) []exp.Exper
 		found := false
 		for _, result := range existingResults {
 			if experiment.VersionHostMPI == result.experiment.VersionHostMPI && experiment.VersionContainerMPI == result.experiment.VersionContainerMPI {
-				fmt.Println ("We already have results for %s on the host and %s in a container, skipping...\n", experiment.VersionHostMPI, experiment.VersionContainerMPI)
+				fmt.Printf("We already have results for %s on the host and %s in a container, skipping...\n", experiment.VersionHostMPI, experiment.VersionContainerMPI)
 				found = true
 				break
 			}
