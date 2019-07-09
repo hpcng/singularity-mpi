@@ -103,7 +103,9 @@ func main() {
 	}
 
 	sysCfg.BinPath = filepath.Dir(bin)
-	sysCfg.TemplateDir = filepath.Join(sysCfg.BinPath, "etc", "templates")
+	sysCfg.EtcDir = filepath.Join(sysCfg.BinPath, "etc")
+	sysCfg.TemplateDir = filepath.Join(sysCfg.EtcDir, "templates")
+	sysCfg.OfiCfgFile = filepath.Join(sysCfg.EtcDir, "ofi.conf")
 
 	/* Figure out the current path */
 	sysCfg.CurPath, err = os.Getwd()
@@ -154,6 +156,15 @@ func main() {
 		// We get the MPI implementation from the list
 		mpiImplem := getMPIImplemFromExperiments(experiments)
 		sysCfg.OutputFile = mpiImplem + "-results.txt"
+	}
+
+	if experiments[0].MPIImplm == "intel" {
+		// Intel MPI is based on OFI so we read our OFI configuration file
+		ofiCfg, err := cfg.LoadOFIConfig(sysCfg.OfiCfgFile)
+		if err != nil {
+			log.Fatalf("failed to read the OFI configuration file: %s", err)
+		}
+		sysCfg.Ifnet = ofiCfg.Ifnet
 	}
 
 	// Display configuration

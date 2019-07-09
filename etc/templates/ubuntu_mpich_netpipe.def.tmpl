@@ -6,7 +6,7 @@ From: ubuntu:latest
     export MPICH_DIR
     export SINGULARITY_MPICH_DIR=$MPICH_DIR
     export SINGULARITYENV_APPEND_PATH=$MPICH_DIR/bin
-    export SINGULAIRTYENV_APPEND_LD_LIBRARY_PATH=$MPICH_DIR/lib
+    export SINGULARITYENV_APPEND_LD_LIBRARY_PATH=$MPICH_DIR/lib
 
 %post
     echo "Installing required packages..."

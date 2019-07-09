@@ -27,11 +27,14 @@ type SysConfig struct {
 	ConfigFile     string // Path to the configuration file describing experiments
 	BinPath        string // Path to the current binary
 	CurPath        string // Current path
+	EtcDir         string // Path to the directory with the configuration files
 	TemplateDir    string // Where the template are
 	SedBin         string // Path to the sed binary
 	SingularityBin string // Path to the singularity binary
 	OutputFile     string // Path the output file
 	NetPipe        bool   // Execute NetPipe as test
+	OfiCfgFile     string // Absolute path to the OFI configuration file
+	Ifnet          string // Network interface to use (e.g., required to setup OFI)
 }
 
 type mpiConfig struct {
@@ -66,6 +69,68 @@ type Experiment struct {
 	URLHostMPI          string
 	VersionContainerMPI string
 	URLContainerMPI     string
+}
+
+// Constants defining the URL types
+const (
+	fileURL = "file"
+	httpURL = "http"
+)
+
+// Constants defining the format of the MPI package
+const (
+	formatBZ2 = "bz2"
+	formatGZ  = "gz"
+	formatTAR = "tar"
+)
+
+// Constants related to Intel MPI
+const (
+	intelInstallPathPrefix         = "compilers_and_libraries/linux/mpi/intel64"
+	intelInstallConfFile           = "silent_install.cfg"
+	intelUninstallConfFile         = "silent_uninstall.cfg"
+	intelInstallConfFileTemplate   = intelInstallConfFile + ".tmpl"
+	intelUninstallConfFileTemplate = intelUninstallConfFile + ".tmpl"
+)
+
+const (
+	cmdTimeout = 10
+)
+
+func detectURLType(url string) string {
+	if url[:7] == "file://" {
+		return "file"
+	}
+
+	if url[:4] == "http" {
+		return "http"
+	}
+
+	// Unsupported type
+	return ""
+}
+
+func copyMPITarball(mpiCfg *mpiConfig) error {
+	// Some sanity checks
+	if mpiCfg.url == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	// Figure out the name of the file if we do not already have it
+	if mpiCfg.tarball == "" {
+		mpiCfg.tarball = path.Base(mpiCfg.url)
+	}
+
+	targetTarballPath := filepath.Join(mpiCfg.buildDir, mpiCfg.tarball)
+	// The begining of the URL starts with 'file://' which we do not want
+	err := copyFile(mpiCfg.url[7:], targetTarballPath)
+	if err != nil {
+		return fmt.Errorf("cannot copy file %s to %s: %s", mpiCfg.url, targetTarballPath, err)
+	}
+
+	mpiCfg.srcPath = filepath.Join(mpiCfg.buildDir, mpiCfg.tarball)
+
+	return nil
 }
 
 func downloadMPI(mpiCfg *mpiConfig) error {
@@ -108,10 +173,45 @@ func downloadMPI(mpiCfg *mpiConfig) error {
 	return nil
 }
 
-const (
-	formatBZ2 = "bz2"
-	formatGZ  = "gz"
-)
+func getMPI(mpiCfg *mpiConfig) error {
+	fmt.Println("- Getting MPI...")
+
+	// Sanity checks
+	if mpiCfg.url == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	// Detect the type of URL, e.g., file vs. http*
+	urlFormat := detectURLType(mpiCfg.url)
+	if urlFormat == "" {
+		return fmt.Errorf("impossible to detect type from URL %s", mpiCfg.url)
+	}
+
+	switch urlFormat {
+	case fileURL:
+		err := copyMPITarball(mpiCfg)
+		if err != nil {
+			return fmt.Errorf("impossible to copy the MPI tarball: %s", err)
+		}
+	case httpURL:
+		err := downloadMPI(mpiCfg)
+		if err != nil {
+			return fmt.Errorf("impossible to download MPI: %s", err)
+		}
+	default:
+		return fmt.Errorf("impossible to detect URL type: %s", mpiCfg.url)
+	}
+
+	return nil
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
 
 func detectTarballFormat(filepath string) string {
 	if path.Ext(filepath) == ".bz2" {
@@ -120,6 +220,10 @@ func detectTarballFormat(filepath string) string {
 
 	if path.Ext(filepath) == ".gz" {
 		return formatGZ
+	}
+
+	if path.Ext(filepath) == ".tar" {
+		return formatTAR
 	}
 
 	return ""
@@ -154,6 +258,8 @@ func unpackMPI(mpiCfg *mpiConfig) error {
 		tarArg = "-xjf"
 	case formatGZ:
 		tarArg = "-xzf"
+	case formatTAR:
+		tarArg = "-xf"
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
 	}
@@ -194,6 +300,13 @@ func configureMPI(mpiCfg *mpiConfig) error {
 	// Some sanity checks
 	if mpiCfg.srcDir == "" || mpiCfg.installDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	// If the source code does not have a configure file, we simply skip the step
+	configurePath := filepath.Join(mpiCfg.srcDir, "configure")
+	if !fileExists(configurePath) {
+		fmt.Printf("-> %s does not exist, skipping the configuration step\n", configurePath)
+		return nil
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -242,6 +355,80 @@ func compileMPI(mpiCfg *mpiConfig) error {
 	return nil
 }
 
+func setupIntelInstallScript(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
+	// Copy silent script templates to install Intel MPI
+	intelSilentInstallTemplate := filepath.Join(sysCfg.TemplateDir, "intel", intelInstallConfFileTemplate)
+	intelSilentInstallConfig := filepath.Join(mpiCfg.srcDir, intelInstallConfFile)
+	fmt.Printf("Copying %s to %s\n", intelSilentInstallTemplate, intelSilentInstallConfig)
+	err := copyFile(intelSilentInstallTemplate, intelSilentInstallConfig)
+	if err != nil {
+		return fmt.Errorf("failed to copy %s to %s: %s", intelSilentInstallTemplate, intelSilentInstallConfig, err)
+	}
+
+	intelSilentUninstallTemplate := filepath.Join(sysCfg.TemplateDir, "intel", intelUninstallConfFileTemplate)
+	intelSilentUninstallConfig := filepath.Join(mpiCfg.srcDir, intelUninstallConfFile)
+	err = copyFile(intelSilentUninstallTemplate, intelSilentUninstallConfig)
+	if err != nil {
+		return fmt.Errorf("failed to copy %s to %s: %s", intelSilentUninstallTemplate, intelSilentUninstallConfig, err)
+	}
+
+	// Update the templates
+	err = updateIntelTemplates(mpiCfg, sysCfg)
+	if err != nil {
+		return fmt.Errorf("unable to update Intel templates: %s", err)
+	}
+
+	return nil
+}
+
+func runIntelScript(mpiCfg *mpiConfig, sysCfg *SysConfig, phase string) error {
+	var configFile string
+
+	fmt.Printf("Running %s script...\n", phase)
+
+	switch phase {
+	case "install":
+		configFile = intelInstallConfFile
+	case "uninstall":
+		configFile = intelUninstallConfFile
+	default:
+		return fmt.Errorf("unknown phase: %s", phase)
+	}
+
+	// Run the install or uninstall script
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("./install.sh", "--silent", configFile)
+	cmd.Dir = mpiCfg.srcDir
+	cmd.Stderr = &stderr
+	cmd.Stdout = &stdout
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+	}
+
+	return nil
+}
+
+func compileMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
+	fmt.Println("- Compiling MPI...")
+	if mpiCfg.srcDir == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	makefilePath := filepath.Join(mpiCfg.srcDir, "Makefile")
+	if fileExists(makefilePath) {
+		return runMake(mpiCfg)
+	}
+
+	fmt.Println("-> No Makefile, trying to figure out how to compile/install MPI...")
+	if mpiCfg.mpiImplm == "intel" {
+		setupIntelInstallScript(mpiCfg, sysCfg)
+		return runIntelScript(mpiCfg, sysCfg, "install")
+	}
+
+	return nil
+}
+
 func cleanupString(str string) string {
 	// Remove all color escape sequences from string
 	reg := regexp.MustCompile(`\\x1b\[[0-9]+m`)
@@ -263,6 +450,42 @@ func postExecutionDataMgt(exp Experiment, sysCfg *SysConfig, output string) (str
 		}
 	}
 	return "", nil
+}
+
+func getEnvPath(mpiCfg *mpiConfig) string {
+	// Intel MPI is installing the binaries and libraries in a quite complex setup
+	if mpiCfg.mpiImplm == "intel" {
+		return filepath.Join(mpiCfg.installDir, intelInstallPathPrefix, "bin") + ":" + os.Getenv("PATH")
+	}
+
+	return filepath.Join(mpiCfg.installDir, "bin") + ":" + os.Getenv("PATH")
+}
+
+func getEnvLDPath(mpiCfg *mpiConfig) string {
+	// Intel MPI is installing the binaries and libraries in a quite complex setup
+	if mpiCfg.mpiImplm == "intel" {
+		return filepath.Join(mpiCfg.installDir, intelInstallPathPrefix, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
+	}
+
+	return filepath.Join(mpiCfg.installDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
+}
+
+func getPathToMpirun(mpiCfg *mpiConfig) string {
+	// Intel MPI is installing the binaries and libraries in a quite complex setup
+	if mpiCfg.mpiImplm == "intel" {
+		return filepath.Join(mpiCfg.buildDir, intelInstallPathPrefix, "bin/mpiexec")
+	}
+
+	return filepath.Join(mpiCfg.installDir, "bin", "mpirun")
+}
+
+func getExtraMpirunArgs(mpiCfg *mpiConfig) []string {
+	// Intel MPI is based on OFI so even for a simple TCP test, we need some extra arguments
+	if mpiCfg.mpiImplm == "intel" {
+		return []string{"-env", "FI_PROVIDER", "socket", "-env", "I_MPI_FABRICS", "ofi"}
+	}
+
+	return []string{""}
 }
 
 // Run configure, install and execute a given experiment
@@ -300,7 +523,7 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 
 	/* CREATE THE CONTAINER MPI CONFIGURATION */
 
-	// Cretae a temporary directory where the container will be built
+	// Create a temporary directory where the container will be built
 	myContainerMPICfg.buildDir, err = ioutil.TempDir("", "mpi_container_"+exp.VersionContainerMPI+"-")
 	if err != nil {
 		return false, "", fmt.Errorf("failed to create directory to build container: %s", err)
@@ -317,10 +540,15 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	log.Println("-> MPI version:", myContainerMPICfg.mpiVersion)
 	log.Println("-> MPI URL:", myContainerMPICfg.url)
 
-	err = installHostMPI(&myHostMPICfg)
+	/* INSTALL MPI ON THE HOST */
+
+	err = installHostMPI(&myHostMPICfg, sysCfg)
 	if err != nil {
 		return false, "", fmt.Errorf("failed to install host MPI: %s", err)
 	}
+	defer uninstallHostMPI(&myHostMPICfg, sysCfg)
+
+	/* CREATE THE MPI CONTAINER */
 
 	err = createMPIContainer(&myContainerMPICfg, sysCfg)
 	if err != nil {
@@ -331,21 +559,31 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 
 	log.Println("Running Test(s)...")
 	// We only let the mpirun command run for 10 minutes max
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout*time.Minute)
 	defer cancel()
 
-	var stdout, stderr bytes.Buffer
-	newPath := myHostMPICfg.installDir + "/bin:" + os.Getenv("PATH")
-	newLDPath := myHostMPICfg.installDir + "/lib:" + os.Getenv("LD_LIBRARY_PATH")
+	// Regex to catch errors where mpirun returns 0 but is known to have failed because displaying the help message
+	var re = regexp.MustCompile(`^(\n?)Usage:`)
 
-	mpirunBin := filepath.Join(myHostMPICfg.installDir, "bin", "mpirun")
-	mpiCmd := exec.CommandContext(ctx, mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
+	var stdout, stderr bytes.Buffer
+	newPath := getEnvPath(&myHostMPICfg)
+	newLDPath := getEnvLDPath(&myHostMPICfg)
+
+	mpirunBin := getPathToMpirun(&myHostMPICfg)
+	extraArgs := getExtraMpirunArgs(&myHostMPICfg)
+
+	cmdArgs := append(extraArgs, "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
+	//	mpiCmd := exec.CommandContext(ctx, mpirunBin, "-env", "FI_PROVIDER", "socket", "-env", "I_MPI_FABRICS", "ofi", "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
+	mpiCmd := exec.CommandContext(ctx, mpirunBin, cmdArgs...)
 	mpiCmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
 	mpiCmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
 	mpiCmd.Stdout = &stdout
 	mpiCmd.Stderr = &stderr
+	log.Printf("-> Running: %s %s", mpirunBin, strings.Join(cmdArgs, " "))
+	log.Printf("-> PATH=%s", newPath)
+	log.Printf("-> LD_LIBRARY_PATH=%s\n", newLDPath)
 	err = mpiCmd.Run()
-	if err != nil || ctx.Err() == context.DeadlineExceeded {
+	if err != nil || ctx.Err() == context.DeadlineExceeded || re.Match([]byte(stdout.String())) {
 		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
 		return false, "", nil
 	}
@@ -363,9 +601,19 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	return true, note, nil
 }
 
-func installHostMPI(myCfg *mpiConfig) error {
+func uninstallHostMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
+	log.Println("Uninstalling MPI on host...")
+
+	if mpiCfg.mpiImplm == "intel" {
+		return runIntelScript(mpiCfg, sysCfg, "uninstall")
+	}
+
+	return nil
+}
+
+func installHostMPI(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	log.Println("Installing MPI on host...")
-	err := downloadMPI(myCfg)
+	err := getMPI(myCfg)
 	if err != nil {
 		return fmt.Errorf("failed to download MPI from %s: %s", myCfg.url, err)
 	}
@@ -381,9 +629,9 @@ func installHostMPI(myCfg *mpiConfig) error {
 		return fmt.Errorf("failed to configure MPI: %s", err)
 	}
 
-	err = compileMPI(myCfg)
+	err = compileMPI(myCfg, sysCfg)
 	if err != nil {
-		return fmt.Errorf("failed to compile MPI")
+		return fmt.Errorf("failed to compile MPI: %s", err)
 	}
 
 	return nil
@@ -429,13 +677,6 @@ func doUpdateDefFile(myCfg *mpiConfig, sysCfg *SysConfig, compileCfg *compileCon
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
-	if sysCfg.SedBin == "" {
-		sysCfg.SedBin, err = exec.LookPath("sed")
-		if err != nil {
-			return fmt.Errorf("failed to find path for sed: %s", err)
-		}
-	}
-
 	if myCfg.tarball == "" {
 		myCfg.tarball = path.Base(myCfg.url)
 	}
@@ -452,6 +693,8 @@ func doUpdateDefFile(myCfg *mpiConfig, sysCfg *SysConfig, compileCfg *compileCon
 		tarArgs = "-xjf"
 	case formatGZ:
 		tarArgs = "-xzf"
+	case formatTAR:
+		tarArgs = "-xf"
 	default:
 		return fmt.Errorf("un-supported tarball format for %s", myCfg.tarball)
 	}
@@ -487,12 +730,115 @@ func updateMPICHDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 func updateOMPIDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	var compileCfg compileConfig
 	compileCfg.mpiVersionTag = "OMPIVERSION"
-	compileCfg.mpiURLTag = "OMPIURL"
 	compileCfg.mpiTarballTag = "OMPITARBALL"
 
 	err := doUpdateDefFile(myCfg, sysCfg, &compileCfg)
 	if err != nil {
 		return fmt.Errorf("failed to update Open MPI definition file")
+	}
+
+	return nil
+}
+
+func updateIntelMPIDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
+	// Intel MPI is very special so we have IMPI-specific code and it is okay
+
+	// First we need to specialy prepare install & uninstall configuration file
+	// Assumptions:
+	// - code unpacked in /tmp/impi
+	// - code installed in /opt/impi (but remember that the binaries and libraries are deep a sub-directory)
+	const (
+		containerIMPIInstallDir = "/opt/impi"
+	)
+
+	if mpiCfg.tarball == "" {
+		mpiCfg.tarball = path.Base(mpiCfg.url)
+	}
+
+	// Sanity checks
+	if mpiCfg.mpiVersion == "" || mpiCfg.tarball == "" || mpiCfg.defFile == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	// Copy the install & uninstall configuration file to the temporary directory used to build the container
+	// These install &uninstall configuation file will be used wihtin the container to install IMPI
+	srcInstallConfFile := filepath.Join(sysCfg.TemplateDir, "intel", intelInstallConfFileTemplate)
+	destInstallConfFile := filepath.Join(mpiCfg.buildDir, intelInstallConfFile)
+	srcUninstallConfFile := filepath.Join(sysCfg.TemplateDir, "intel", intelUninstallConfFileTemplate)
+	destUninstallConfFile := filepath.Join(mpiCfg.buildDir, intelUninstallConfFile)
+	err := copyFile(srcInstallConfFile, destInstallConfFile)
+	if err != nil {
+		return fmt.Errorf("enable to copy %s to %s: %s", srcInstallConfFile, destInstallConfFile, err)
+	}
+	err = copyFile(srcUninstallConfFile, destUninstallConfFile)
+	if err != nil {
+		return fmt.Errorf("enable to copy %s to %s: %s", srcUninstallConfFile, destUninstallConfFile, err)
+	}
+
+	err = updateIntelTemplate(destInstallConfFile, containerIMPIInstallDir)
+	if err != nil {
+		return fmt.Errorf("unable to update IMPI template %s: %s", destInstallConfFile, err)
+	}
+
+	err = updateIntelTemplate(destUninstallConfFile, containerIMPIInstallDir)
+	if err != nil {
+		return fmt.Errorf("unable to update IMPI template %s: %s", destUninstallConfFile, err)
+	}
+
+	// Then we have to put together a valid def file
+	data, err := ioutil.ReadFile(mpiCfg.defFile)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %s", mpiCfg.defFile, err)
+	}
+
+	content := string(data)
+	content = strings.Replace(content, "IMPIVERSION", mpiCfg.mpiVersion, -1)
+	content = strings.Replace(content, "IMPITARBALL", mpiCfg.url[7:], -1)
+	content = strings.Replace(content, "IMPIDIR", filepath.Join(containerIMPIInstallDir, mpiCfg.mpiVersion, intelInstallPathPrefix), -1)
+	content = strings.Replace(content, "IMPIINSTALLCONFFILE", intelInstallConfFile, -1)
+	content = strings.Replace(content, "IMPIUNINSTALLCONFFILE", intelUninstallConfFile, -1)
+	content = strings.Replace(content, "NETWORKINTERFACE", sysCfg.Ifnet, -1)
+
+	err = ioutil.WriteFile(mpiCfg.defFile, []byte(content), 0)
+	if err != nil {
+		return fmt.Errorf("failed to write file %s: %s", mpiCfg.defFile, err)
+	}
+
+	return nil
+}
+
+func updateIntelTemplate(filepath string, destMPIInstall string) error {
+	data, err := ioutil.ReadFile(filepath)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %s", filepath, err)
+	}
+	content := string(data)
+	content = strings.Replace(content, "MPIINSTALLDIR", destMPIInstall, -1)
+	err = ioutil.WriteFile(filepath, []byte(content), 0)
+	if err != nil {
+		return fmt.Errorf("failed to write file %s: %s", filepath, err)
+	}
+	return nil
+}
+
+// This function updated the Intel install/uninstall scripts for the installation on the host
+func updateIntelTemplates(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
+	// Sanity checks
+	if mpiCfg.srcDir == "" || mpiCfg.buildDir == "" {
+		return fmt.Errorf("Invalid parameter(s)")
+	}
+
+	intelSilentInstallConfig := filepath.Join(mpiCfg.srcDir, intelInstallConfFile)
+	intelSilentUninstallConfig := filepath.Join(mpiCfg.srcDir, intelUninstallConfFile)
+
+	err := updateIntelTemplate(intelSilentInstallConfig, mpiCfg.buildDir)
+	if err != nil {
+		return fmt.Errorf("failed to update template %s: %s", intelSilentInstallConfig, err)
+	}
+
+	err = updateIntelTemplate(intelSilentUninstallConfig, mpiCfg.buildDir)
+	if err != nil {
+		return fmt.Errorf("failed to update template %s: %s", intelSilentUninstallConfig, err)
 	}
 
 	return nil
@@ -510,23 +856,29 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	switch myCfg.mpiImplm {
 	case "openmpi":
 		if sysCfg.NetPipe {
-			templateFileName = "ubuntu_ompi_netpipe.def.tmpl"
 			defFileName = "ubuntu_ompi_netpipe.def"
 		} else {
-			templateFileName = "ubuntu_ompi.def.tmpl"
 			defFileName = "ubuntu_ompi.def"
 		}
+
 	case "mpich":
 		if sysCfg.NetPipe {
-			templateFileName = "ubuntu_mpich_netpipe.def.tmpl"
 			defFileName = "ubuntu_mpich_netpipe.def"
 		} else {
-			templateFileName = "ubuntu_mpich.def.tmpl"
 			defFileName = "ubuntu_mpich.def"
+		}
+	case "intel":
+		if sysCfg.NetPipe {
+			defFileName = "ubuntu_intel_netpipe.def"
+		} else {
+			defFileName = "ubuntu_intel.def"
 		}
 	default:
 		return fmt.Errorf("unsupported MPI implementation: %s", myCfg.mpiImplm)
 	}
+
+	templateFileName = defFileName + ".tmpl"
+
 	templateDefFile := filepath.Join(sysCfg.TemplateDir, templateFileName)
 	myCfg.defFile = filepath.Join(myCfg.buildDir, defFileName)
 
@@ -555,6 +907,11 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 		err := updateMPICHDefFile(myCfg, sysCfg)
 		if err != nil {
 			return fmt.Errorf("failed to update MPICH template: %s", err)
+		}
+	case "intel":
+		err := updateIntelMPIDefFile(myCfg, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to update IMPI template: %s", err)
 		}
 	default:
 		return fmt.Errorf("unsupported MPI implementation: %s", myCfg.mpiImplm)
@@ -588,9 +945,13 @@ func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
 
 	myCfg.containerPath = filepath.Join(myCfg.buildDir, imgName)
 
+	// We only let the mpirun command run for 10 minutes max
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout*2*time.Minute)
+	defer cancel()
+
 	// The definition file is ready so we simple build the container using the Singularity command
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(sudoBin, sysCfg.SingularityBin, "build", imgName, myCfg.defFile)
+	cmd := exec.CommandContext(ctx, sudoBin, sysCfg.SingularityBin, "build", imgName, myCfg.defFile)
 	cmd.Dir = myCfg.buildDir
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
