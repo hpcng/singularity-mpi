@@ -322,7 +322,7 @@ func configureMPI(mpiCfg *mpiConfig) error {
 	return nil
 }
 
-func compileMPI(mpiCfg *mpiConfig) error {
+func runMake(mpiCfg *mpiConfig) error {
 	log.Println("- Compiling MPI...")
 
 	// Some sanity checks
