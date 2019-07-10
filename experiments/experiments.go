@@ -29,12 +29,14 @@ type SysConfig struct {
 	CurPath        string // Current path
 	EtcDir         string // Path to the directory with the configuration files
 	TemplateDir    string // Where the template are
+	ScratchDir     string // Where a copy generated files are saved for debugging
 	SedBin         string // Path to the sed binary
 	SingularityBin string // Path to the singularity binary
 	OutputFile     string // Path the output file
 	NetPipe        bool   // Execute NetPipe as test
 	OfiCfgFile     string // Absolute path to the OFI configuration file
 	Ifnet          string // Network interface to use (e.g., required to setup OFI)
+	Debug          bool   // Debug mode is active/inactive
 }
 
 type mpiConfig struct {
@@ -174,7 +176,7 @@ func downloadMPI(mpiCfg *mpiConfig) error {
 }
 
 func getMPI(mpiCfg *mpiConfig) error {
-	fmt.Println("- Getting MPI...")
+	log.Println("- Getting MPI...")
 
 	// Sanity checks
 	if mpiCfg.url == "" {
@@ -323,8 +325,6 @@ func configureMPI(mpiCfg *mpiConfig) error {
 }
 
 func runMake(mpiCfg *mpiConfig) error {
-	log.Println("- Compiling MPI...")
-
 	// Some sanity checks
 	if mpiCfg.srcDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
@@ -410,7 +410,7 @@ func runIntelScript(mpiCfg *mpiConfig, sysCfg *SysConfig, phase string) error {
 }
 
 func compileMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
-	fmt.Println("- Compiling MPI...")
+	log.Println("- Compiling MPI...")
 	if mpiCfg.srcDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
@@ -885,7 +885,7 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	// Copy the definition file template to the temporary directory
 	err := copyFile(templateDefFile, myCfg.defFile)
 	if err != nil {
-		return fmt.Errorf("Failed to copy %s to %s: %s", templateDefFile, myCfg.defFile, err)
+		return fmt.Errorf("failed to copy %s to %s: %s", templateDefFile, myCfg.defFile, err)
 	}
 
 	// Copy the test file
@@ -893,7 +893,7 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	destTestFile := filepath.Join(myCfg.buildDir, "mpitest.c")
 	err = copyFile(testFile, destTestFile)
 	if err != nil {
-		return fmt.Errorf("Failed to copy %s to %s: %s", testFile, destTestFile, err)
+		return fmt.Errorf("failed to copy %s to %s: %s", testFile, destTestFile, err)
 	}
 
 	// Update the definition file for the specific version of MPI we are testing
@@ -915,6 +915,16 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 		}
 	default:
 		return fmt.Errorf("unsupported MPI implementation: %s", myCfg.mpiImplm)
+	}
+
+	// In debug mode, we save the def file that was generated to the scratch directory
+	if sysCfg.Debug {
+		log.Printf("-> Backing up %s to %s", sysCfg.ScratchDir, defFileName)
+		backupFile := filepath.Join(sysCfg.ScratchDir, defFileName)
+		err = copyFile(myCfg.defFile, backupFile)
+		if err != nil {
+			log.Printf("-> error while backing up %s to %s", sysCfg.ScratchDir, defFileName)
+		}
 	}
 
 	return nil

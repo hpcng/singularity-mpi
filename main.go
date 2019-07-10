@@ -106,6 +106,7 @@ func main() {
 	sysCfg.EtcDir = filepath.Join(sysCfg.BinPath, "etc")
 	sysCfg.TemplateDir = filepath.Join(sysCfg.EtcDir, "templates")
 	sysCfg.OfiCfgFile = filepath.Join(sysCfg.EtcDir, "ofi.conf")
+	sysCfg.ScratchDir = filepath.Join(sysCfg.BinPath, "scratch")
 
 	/* Figure out the current path */
 	sysCfg.CurPath, err = os.Getwd()
@@ -116,12 +117,25 @@ func main() {
 	/* Argument parsing */
 	configFile := flag.String("configfile", sysCfg.BinPath+"/etc/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
 	outputFile := flag.String("outputFile", "", "Full path to the output file")
-	verbose := flag.Bool("v", false, "Enable/disable verbosity")
+	verbose := flag.Bool("v", false, "Enable verbose mode")
 	netpipe := flag.Bool("netpipe", false, "Perform NetPipe rather than a basic hello world test")
+	debug := flag.Bool("d", false, "Enable debug mode")
 
 	flag.Parse()
 
 	// Save the options passed in through the command flags
+	if *debug == true {
+		*verbose = true
+		sysCfg.Debug = *debug
+		// If the scratch dir exists, we delete it to start fresh
+		if _, err := os.Stat(sysCfg.ScratchDir); !os.IsNotExist(err) {
+			os.RemoveAll(sysCfg.ScratchDir)
+		}
+		err := os.MkdirAll(sysCfg.ScratchDir, 0755)
+		if err != nil {
+			log.Fatalf("failed to create scratch directory: %s", err)
+		}
+	}
 	if *verbose == false {
 		log.SetOutput(ioutil.Discard)
 	}
@@ -131,7 +145,7 @@ func main() {
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
-		log.Fatal("cannot parse", sysCfg.ConfigFile, " - ", err)
+		log.Fatalf("cannot parse %s: %s", sysCfg.ConfigFile, err)
 	}
 
 	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
@@ -172,6 +186,7 @@ func main() {
 	log.Println("Binary path:", sysCfg.BinPath)
 	log.Println("Output file:", sysCfg.OutputFile)
 	log.Println("Running NetPipe:", strconv.FormatBool(sysCfg.NetPipe))
+	log.Println("Debug mode:", sysCfg.Debug)
 
 	// Load the results we already have in result file
 	existingResults, err := results.Load(sysCfg.OutputFile)
