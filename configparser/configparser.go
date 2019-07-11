@@ -112,6 +112,11 @@ func Parse(file string) (*Config, error) {
 			continue
 		}
 
+		// We skip empty lines
+		if line == "" {
+			continue
+		}
+
 		// If we did not detect the MPI implementation yet, we try to detect it
 		implem, version := detectMpiImplem(line)
 		if implem == "" || version == "" {
