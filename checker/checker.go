@@ -38,7 +38,7 @@ func CheckDefFile(path string) error {
 		if !strings.HasPrefix(line, "Bootstrap:") {
 			return fmt.Errorf("%s is an invalid definition file", path)
 		}
-		continue
+		break
 	}
 
 	return nil
