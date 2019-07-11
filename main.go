@@ -141,7 +141,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("the system is not correctly setup: %s", err)
 		}
-		os.Exit(42)
 	}
 	if *verbose == false {
 		log.SetOutput(ioutil.Discard)
