@@ -666,6 +666,15 @@ func copyFile(src string, dst string) error {
 		return fmt.Errorf("unabel to copy file from %s to %s: %s", src, dst, err)
 	}
 
+	// Check whether the copy succeeded by comparing the sizes of the two files
+	dstStat, err := d.Stat()
+	if err != nil {
+		return fmt.Errorf("unable to get stat for %s: %s", d.Name(), err)
+	}
+	if srcStat.Size() != dstStat.Size() {
+		return fmt.Errorf("file copy failed, size is %d instead of %d", srcStat.Size(), dstStat.Size())
+	}
+
 	return nil
 }
 

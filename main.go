@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"singularity-mpi/checker"
 	cfg "singularity-mpi/configparser"
 	exp "singularity-mpi/experiments"
 	"singularity-mpi/results"
@@ -135,6 +136,12 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to create scratch directory: %s", err)
 		}
+
+		err = checker.CheckSystemConfig()
+		if err != nil {
+			log.Fatalf("the system is not correctly setup: %s", err)
+		}
+		os.Exit(42)
 	}
 	if *verbose == false {
 		log.SetOutput(ioutil.Discard)
