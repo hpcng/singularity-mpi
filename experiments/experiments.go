@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"singularity-mpi/checker"
 	"strings"
 	"time"
 )
@@ -638,6 +639,7 @@ func installHostMPI(myCfg *mpiConfig, sysCfg *SysConfig) error {
 }
 
 func copyFile(src string, dst string) error {
+	log.Printf("* Copying %s to %s", src, dst)
 	// Check that the source file is valid
 	srcStat, err := os.Stat(src)
 	if err != nil {
@@ -682,7 +684,9 @@ func doUpdateDefFile(myCfg *mpiConfig, sysCfg *SysConfig, compileCfg *compileCon
 	var err error
 
 	// Sanity checks
-	if myCfg.mpiVersion == "" || myCfg.buildDir == "" || myCfg.url == "" || myCfg.defFile == "" {
+	if myCfg.mpiVersion == "" || myCfg.buildDir == "" || myCfg.url == "" ||
+		myCfg.defFile == "" || compileCfg.mpiVersionTag == "" ||
+		compileCfg.mpiURLTag == "" || compileCfg.mpiTarballTag == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
@@ -708,6 +712,13 @@ func doUpdateDefFile(myCfg *mpiConfig, sysCfg *SysConfig, compileCfg *compileCon
 		return fmt.Errorf("un-supported tarball format for %s", myCfg.tarball)
 	}
 
+	if sysCfg.Debug {
+		log.Printf("--> Replacing %s with %s", compileCfg.mpiVersionTag, myCfg.mpiVersion)
+		log.Printf("--> Replacing %s with %s", compileCfg.mpiURLTag, myCfg.url)
+		log.Printf("--> Replacing %s with %s", compileCfg.mpiTarballTag, myCfg.tarball)
+		log.Printf("--> Replacing TARARGS with %s", tarArgs)
+	}
+
 	content := string(data)
 	content = strings.Replace(content, compileCfg.mpiVersionTag, myCfg.mpiVersion, -1)
 	content = strings.Replace(content, compileCfg.mpiURLTag, myCfg.url, -1)
@@ -730,7 +741,7 @@ func updateMPICHDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 
 	err := doUpdateDefFile(myCfg, sysCfg, &compileCfg)
 	if err != nil {
-		return fmt.Errorf("failed to update MPICH definition file")
+		return fmt.Errorf("failed to update MPICH definition file: %s", err)
 	}
 
 	return nil
@@ -739,11 +750,12 @@ func updateMPICHDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 func updateOMPIDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	var compileCfg compileConfig
 	compileCfg.mpiVersionTag = "OMPIVERSION"
+	compileCfg.mpiURLTag = "OMPIURL"
 	compileCfg.mpiTarballTag = "OMPITARBALL"
 
 	err := doUpdateDefFile(myCfg, sysCfg, &compileCfg)
 	if err != nil {
-		return fmt.Errorf("failed to update Open MPI definition file")
+		return fmt.Errorf("failed to update Open MPI definition file: %s", err)
 	}
 
 	return nil
@@ -853,23 +865,22 @@ func updateIntelTemplates(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	return nil
 }
 
-func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
+func generateDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	log.Println("- Generating Singularity defintion file...")
 	// Sanity checks
-	if myCfg.buildDir == "" {
+	if mpiCfg.buildDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	var defFileName string
 	var templateFileName string
-	switch myCfg.mpiImplm {
+	switch mpiCfg.mpiImplm {
 	case "openmpi":
 		if sysCfg.NetPipe {
 			defFileName = "ubuntu_ompi_netpipe.def"
 		} else {
 			defFileName = "ubuntu_ompi.def"
 		}
-
 	case "mpich":
 		if sysCfg.NetPipe {
 			defFileName = "ubuntu_mpich_netpipe.def"
@@ -883,56 +894,56 @@ func generateDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
 			defFileName = "ubuntu_intel.def"
 		}
 	default:
-		return fmt.Errorf("unsupported MPI implementation: %s", myCfg.mpiImplm)
+		return fmt.Errorf("unsupported MPI implementation: %s", mpiCfg.mpiImplm)
 	}
 
 	templateFileName = defFileName + ".tmpl"
 
 	templateDefFile := filepath.Join(sysCfg.TemplateDir, templateFileName)
-	myCfg.defFile = filepath.Join(myCfg.buildDir, defFileName)
+	mpiCfg.defFile = filepath.Join(mpiCfg.buildDir, defFileName)
 
 	// Copy the definition file template to the temporary directory
-	err := copyFile(templateDefFile, myCfg.defFile)
+	err := copyFile(templateDefFile, mpiCfg.defFile)
 	if err != nil {
-		return fmt.Errorf("failed to copy %s to %s: %s", templateDefFile, myCfg.defFile, err)
+		return fmt.Errorf("failed to copy %s to %s: %s", templateDefFile, mpiCfg.defFile, err)
 	}
 
 	// Copy the test file
 	testFile := filepath.Join(sysCfg.TemplateDir, "mpitest.c")
-	destTestFile := filepath.Join(myCfg.buildDir, "mpitest.c")
+	destTestFile := filepath.Join(mpiCfg.buildDir, "mpitest.c")
 	err = copyFile(testFile, destTestFile)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s: %s", testFile, destTestFile, err)
 	}
 
 	// Update the definition file for the specific version of MPI we are testing
-	switch myCfg.mpiImplm {
+	switch mpiCfg.mpiImplm {
 	case "openmpi":
-		err := updateOMPIDefFile(myCfg, sysCfg)
+		err := updateOMPIDefFile(mpiCfg, sysCfg)
 		if err != nil {
 			return fmt.Errorf("failed to update OMPI template: %s", err)
 		}
 	case "mpich":
-		err := updateMPICHDefFile(myCfg, sysCfg)
+		err := updateMPICHDefFile(mpiCfg, sysCfg)
 		if err != nil {
 			return fmt.Errorf("failed to update MPICH template: %s", err)
 		}
 	case "intel":
-		err := updateIntelMPIDefFile(myCfg, sysCfg)
+		err := updateIntelMPIDefFile(mpiCfg, sysCfg)
 		if err != nil {
 			return fmt.Errorf("failed to update IMPI template: %s", err)
 		}
 	default:
-		return fmt.Errorf("unsupported MPI implementation: %s", myCfg.mpiImplm)
+		return fmt.Errorf("unsupported MPI implementation: %s", mpiCfg.mpiImplm)
 	}
 
 	// In debug mode, we save the def file that was generated to the scratch directory
 	if sysCfg.Debug {
-		log.Printf("-> Backing up %s to %s", sysCfg.ScratchDir, defFileName)
 		backupFile := filepath.Join(sysCfg.ScratchDir, defFileName)
-		err = copyFile(myCfg.defFile, backupFile)
+		log.Printf("-> Backing up %s to %s", mpiCfg.defFile, backupFile)
+		err = copyFile(mpiCfg.defFile, backupFile)
 		if err != nil {
-			log.Printf("-> error while backing up %s to %s", sysCfg.ScratchDir, defFileName)
+			log.Printf("-> error while backing up %s to %s", mpiCfg.defFile, backupFile)
 		}
 	}
 
@@ -969,6 +980,11 @@ func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	defer cancel()
 
 	// The definition file is ready so we simple build the container using the Singularity command
+	if sysCfg.Debug {
+		checker.CheckDefFile(myCfg.defFile)
+	}
+
+	log.Printf("-> Using definition file %s", myCfg.defFile)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, sudoBin, sysCfg.SingularityBin, "build", imgName, myCfg.defFile)
 	cmd.Dir = myCfg.buildDir
