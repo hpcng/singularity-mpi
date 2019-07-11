@@ -571,16 +571,27 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	newLDPath := getEnvLDPath(&myHostMPICfg)
 
 	mpirunBin := getPathToMpirun(&myHostMPICfg)
-	extraArgs := getExtraMpirunArgs(&myHostMPICfg)
 
-	cmdArgs := append(extraArgs, "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
-	//	mpiCmd := exec.CommandContext(ctx, mpirunBin, "-env", "FI_PROVIDER", "socket", "-env", "I_MPI_FABRICS", "ofi", "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
-	mpiCmd := exec.CommandContext(ctx, mpirunBin, cmdArgs...)
+	// We have to be careful: if we leave an empty argument in the slice, it may lead to a mpirun failure.
+	var mpiCmd *exec.Cmd
+	// We really do not want to do this but MPICH is being picky about args so for now, it will do the job.
+	if myHostMPICfg.mpiImplm == "intel" {
+		extraArgs := getExtraMpirunArgs(&myHostMPICfg)
+
+		args := []string{"-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath}
+		if len(extraArgs) > 0 {
+			args = append(extraArgs, args...)
+		}
+		mpiCmd = exec.CommandContext(ctx, mpirunBin, args...)
+		log.Printf("-> Running: %s %s", mpirunBin, strings.Join(args, " "))
+	} else {
+		mpiCmd = exec.CommandContext(ctx, mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath)
+		log.Printf("-> Running: %s %s", mpirunBin, strings.Join([]string{"-np", "2", "singularity", "exec", myContainerMPICfg.containerPath, myContainerMPICfg.testPath}, " "))
+	}
 	mpiCmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
 	mpiCmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
 	mpiCmd.Stdout = &stdout
 	mpiCmd.Stderr = &stderr
-	log.Printf("-> Running: %s %s", mpirunBin, strings.Join(cmdArgs, " "))
 	log.Printf("-> PATH=%s", newPath)
 	log.Printf("-> LD_LIBRARY_PATH=%s\n", newLDPath)
 	err = mpiCmd.Run()
