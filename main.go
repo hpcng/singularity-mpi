@@ -20,6 +20,10 @@ import (
 	"singularity-mpi/results"
 )
 
+const (
+	defaultUbuntuDistro = "disco"
+)
+
 func getListExperiments(config *cfg.Config) []exp.Experiment {
 	var experiments []exp.Experiment
 	for mpi1, mpi1url := range config.MpiMap {
@@ -152,6 +156,16 @@ func main() {
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
 		log.Fatalf("cannot parse %s: %s", sysCfg.ConfigFile, err)
+	}
+
+	// Try to detect the local distro. If we cannot, it is not a big deal but we know that for example having
+	// different versions of Ubuntu in containers and host may lead to some libc problems
+	sysCfg.TargetUbuntuDistro = defaultUbuntuDistro // By default, containers will use a specific Ubuntu distro
+	distro, err := checker.CheckDistro()
+	if err != nil {
+		log.Println("[INFO] Cannot detect the local distro")
+	} else if distro != "" {
+		sysCfg.TargetUbuntuDistro = distro
 	}
 
 	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
