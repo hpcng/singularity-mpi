@@ -52,7 +52,7 @@ func LoadOFIConfig(filepath string) (*OFIConfig, error) {
 
 		switch key {
 		case "ifnet":
-			if value == "<your network interface" {
+			if value == "<your network interface>" {
 				return nil, fmt.Errorf("ifnet is not properly defined in %s, please update your configuration file", filepath)
 			}
 			config.Ifnet = value
