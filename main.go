@@ -104,6 +104,18 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 	return results
 }
 
+func setDefaultOutputFile(experiments []exp.Experiment, sysCfg *exp.SysConfig) error {
+	// We get the MPI implementation from the list
+	mpiImplem := getMPIImplemFromExperiments(experiments)
+	if !sysCfg.NetPipe {
+		sysCfg.OutputFile = mpiImplem + "-init-results.txt"
+	} else {
+		sysCfg.OutputFile = mpiImplem + "-netpipe-results.txt"
+	}
+
+	return nil
+}
+
 func main() {
 	var sysCfg exp.SysConfig
 
@@ -193,9 +205,10 @@ func main() {
 	// If the user did not specify an output file, we try to implicitly
 	// set a relevant name
 	if sysCfg.OutputFile == "" {
-		// We get the MPI implementation from the list
-		mpiImplem := getMPIImplemFromExperiments(experiments)
-		sysCfg.OutputFile = mpiImplem + "-results.txt"
+		err = setDefaultOutputFile(experiments, &sysCfg)
+		if err != nil {
+			log.Fatalf("failed to set default output filename: %s", err)
+		}
 	}
 
 	if experiments[0].MPIImplm == "intel" {
