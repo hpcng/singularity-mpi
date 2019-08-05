@@ -42,28 +42,28 @@ type SysConfig struct {
 }
 
 type mpiConfig struct {
-	mpiImplm        string // MPI implementation ID (e.g., OMPI, MPICH)
-	mpiVersion      string // Version of the MPI implementation to use
-	url             string // URL to use to download the tarball
-	tarball         string
-	srcPath         string // Path to the downloaded tarball
-	srcDir          string // Where the source has been untared
-	buildDir        string // Directory where to compile
-	installDir      string // Directory where to install the compiled software
-	m4SrcPath       string // Path to the m4 tarball
-	autoconfSrcPath string // Path to the autoconf tarball
-	automakeSrcPath string // Path to the automake tarball
-	libtoolsSrcPath string // Path to the libtools tarball
-	defFile         string // Definition file used to create MPI container
-	containerPath   string // Path to the container image
-	testPath        string // Path to the test to run within the container
+	mpiImplm   string // MPI implementation ID (e.g., OMPI, MPICH)
+	mpiVersion string // Version of the MPI implementation to use
+	url        string // URL to use to download the tarball
+	tarball    string
+	srcPath    string // Path to the downloaded tarball
+	srcDir     string // Where the source has been untared
+	buildDir   string // Directory where to compile
+	installDir string // Directory where to install the compiled software
+	//	m4SrcPath       string // Path to the m4 tarball
+	//	autoconfSrcPath string // Path to the autoconf tarball
+	//	automakeSrcPath string // Path to the automake tarball
+	//	libtoolsSrcPath string // Path to the libtools tarball
+	defFile       string // Definition file used to create MPI container
+	containerPath string // Path to the container image
+	testPath      string // Path to the test to run within the container
 }
 
 type compileConfig struct {
 	mpiVersionTag string
 	mpiURLTag     string
 	mpiTarballTag string
-	mpiTarArgsTag string
+	//	mpiTarArgsTag string
 }
 
 // Experiment is a structure that represents the configuration of an experiment
@@ -424,7 +424,10 @@ func compileMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 
 	fmt.Println("-> No Makefile, trying to figure out how to compile/install MPI...")
 	if mpiCfg.mpiImplm == "intel" {
-		setupIntelInstallScript(mpiCfg, sysCfg)
+		err := setupIntelInstallScript(mpiCfg, sysCfg)
+		if err != nil {
+			return err
+		}
 		return runIntelScript(mpiCfg, sysCfg, "install")
 	}
 
@@ -548,7 +551,12 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	if err != nil {
 		return false, "", fmt.Errorf("failed to install host MPI: %s", err)
 	}
-	defer uninstallHostMPI(&myHostMPICfg, sysCfg)
+	defer func() {
+		err = uninstallHostMPI(&myHostMPICfg, sysCfg)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	/* CREATE THE MPI CONTAINER */
 
@@ -995,7 +1003,10 @@ func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
 
 	// The definition file is ready so we simple build the container using the Singularity command
 	if sysCfg.Debug {
-		checker.CheckDefFile(myCfg.defFile)
+		err = checker.CheckDefFile(myCfg.defFile)
+		if err != nil {
+			return err
+		}
 	}
 
 	log.Printf("-> Using definition file %s", myCfg.defFile)

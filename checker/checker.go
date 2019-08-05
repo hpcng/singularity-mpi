@@ -33,12 +33,14 @@ func CheckDefFile(path string) error {
 
 	// For now we just check the first line that should start with "Bootstrap:"
 	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
+	tok := scanner.Scan()
+	if tok {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "Bootstrap:") {
 			return fmt.Errorf("%s is an invalid definition file", path)
 		}
-		break
+	} else {
+		return scanner.Err()
 	}
 
 	return nil
