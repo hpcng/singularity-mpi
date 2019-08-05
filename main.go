@@ -107,10 +107,14 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 func setDefaultOutputFile(experiments []exp.Experiment, sysCfg *exp.SysConfig) error {
 	// We get the MPI implementation from the list
 	mpiImplem := getMPIImplemFromExperiments(experiments)
-	if !sysCfg.NetPipe {
-		sysCfg.OutputFile = mpiImplem + "-init-results.txt"
-	} else {
+	sysCfg.OutputFile = mpiImplem + "-init-results.txt"
+
+	if sysCfg.NetPipe {
 		sysCfg.OutputFile = mpiImplem + "-netpipe-results.txt"
+	}
+
+	if sysCfg.IMB {
+		sysCfg.OutputFile = mpiImplem + "-imb-results.txt"
 	}
 
 	return nil
@@ -141,7 +145,8 @@ func main() {
 	configFile := flag.String("configfile", sysCfg.BinPath+"/etc/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
 	outputFile := flag.String("outputFile", "", "Full path to the output file")
 	verbose := flag.Bool("v", false, "Enable verbose mode")
-	netpipe := flag.Bool("netpipe", false, "Perform NetPipe rather than a basic hello world test")
+	netpipe := flag.Bool("netpipe", false, "Run NetPipe as test")
+	imb := flag.Bool("imb", false, "Run IMB as test")
 	debug := flag.Bool("d", false, "Enable debug mode")
 
 	flag.Parse()
@@ -169,7 +174,11 @@ func main() {
 	}
 	sysCfg.ConfigFile = *configFile
 	sysCfg.OutputFile = *outputFile
+	if *imb && *netpipe {
+		log.Fatal("please netpipe or imb, not both")
+	}
 	sysCfg.NetPipe = *netpipe
+	sysCfg.IMB = *imb
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
