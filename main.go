@@ -84,14 +84,20 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 				if err != nil {
 					log.Fatalf("failed to write result: %s", err)
 				}
-				f.Sync()
+				err = f.Sync()
+				if err != nil {
+					log.Fatalf("failed to sync log file: %s", err)
+				}
 			} else {
 				log.Println("Experiment failed")
 				_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\t" + note + "\n")
 				if err != nil {
 					log.Fatalf("failed to write result: %s", err)
 				}
-				f.Sync()
+				err = f.Sync()
+				if err != nil {
+					log.Fatalf("failed to sync log file: %s", err)
+				}
 			}
 		}
 	}
@@ -129,7 +135,7 @@ func main() {
 	flag.Parse()
 
 	// Save the options passed in through the command flags
-	if *debug == true {
+	if *debug {
 		*verbose = true
 		sysCfg.Debug = *debug
 		// If the scratch dir exists, we delete it to start fresh
@@ -146,7 +152,7 @@ func main() {
 			log.Fatalf("the system is not correctly setup: %s", err)
 		}
 	}
-	if *verbose == false {
+	if !*verbose {
 		log.SetOutput(ioutil.Discard)
 	}
 	sysCfg.ConfigFile = *configFile
