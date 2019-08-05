@@ -36,6 +36,7 @@ type SysConfig struct {
 	SingularityBin     string // Path to the singularity binary
 	OutputFile         string // Path the output file
 	NetPipe            bool   // Execute NetPipe as test
+	IMB                bool   // Execute IMB as test
 	OfiCfgFile         string // Absolute path to the OFI configuration file
 	Ifnet              string // Network interface to use (e.g., required to setup OFI)
 	Debug              bool   // Debug mode is active/inactive
@@ -604,7 +605,7 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	log.Printf("-> PATH=%s", newPath)
 	log.Printf("-> LD_LIBRARY_PATH=%s\n", newLDPath)
 	err = mpiCmd.Run()
-	if err != nil || ctx.Err() == context.DeadlineExceeded || re.Match([]byte(stdout.String())) {
+	if err != nil || ctx.Err() == context.DeadlineExceeded || re.Match(stdout.Bytes()) {
 		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
 		return false, "", nil
 	}
@@ -898,22 +899,28 @@ func generateDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	var templateFileName string
 	switch mpiCfg.mpiImplm {
 	case "openmpi":
+		defFileName = "ubuntu_ompi.def"
 		if sysCfg.NetPipe {
 			defFileName = "ubuntu_ompi_netpipe.def"
-		} else {
-			defFileName = "ubuntu_ompi.def"
+		}
+		if sysCfg.IMB {
+			defFileName = "ubuntu_ompi_imb.def"
 		}
 	case "mpich":
+		defFileName = "ubuntu_mpich.def"
 		if sysCfg.NetPipe {
 			defFileName = "ubuntu_mpich_netpipe.def"
-		} else {
-			defFileName = "ubuntu_mpich.def"
+		}
+		if sysCfg.IMB {
+			defFileName = "ubuntu_mpich_imb.def"
 		}
 	case "intel":
+		defFileName = "ubuntu_intel.def"
 		if sysCfg.NetPipe {
 			defFileName = "ubuntu_intel_netpipe.def"
-		} else {
-			defFileName = "ubuntu_intel.def"
+		}
+		if sysCfg.IMB {
+			defFileName = "ubuntu_intel_imb.def"
 		}
 	default:
 		return fmt.Errorf("unsupported MPI implementation: %s", mpiCfg.mpiImplm)
@@ -1020,10 +1027,12 @@ func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
 		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
 	}
 
+	myCfg.testPath = filepath.Join("/", "opt", "mpitest")
 	if sysCfg.NetPipe {
 		myCfg.testPath = filepath.Join("/", "opt", "NetPIPE-5.1.4", "NPmpi")
-	} else {
-		myCfg.testPath = filepath.Join("/", "opt", "mpitest")
+	}
+	if sysCfg.IMB {
+		myCfg.testPath = filepath.Join("/", "opt", "mpi-benchmarks", "IMB-MPI1")
 	}
 
 	return nil
