@@ -123,7 +123,7 @@ func generateDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	mpiCfg.defFile = filepath.Join(mpiCfg.buildDir, defFileName)
 
 	// Copy the definition file template to the temporary directory
-	err := copyFile(templateDefFile, mpiCfg.defFile)
+	err := util.CopyFile(templateDefFile, mpiCfg.defFile)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s: %s", templateDefFile, mpiCfg.defFile, err)
 	}
@@ -131,7 +131,7 @@ func generateDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	// Copy the test file
 	testFile := filepath.Join(sysCfg.TemplateDir, "mpitest.c")
 	destTestFile := filepath.Join(mpiCfg.buildDir, "mpitest.c")
-	err = copyFile(testFile, destTestFile)
+	err = util.CopyFile(testFile, destTestFile)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s: %s", testFile, destTestFile, err)
 	}
@@ -161,7 +161,7 @@ func generateDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	if sysCfg.Debug {
 		backupFile := filepath.Join(sysCfg.ScratchDir, defFileName)
 		log.Printf("-> Backing up %s to %s", mpiCfg.defFile, backupFile)
-		err = copyFile(mpiCfg.defFile, backupFile)
+		err = util.CopyFile(mpiCfg.defFile, backupFile)
 		if err != nil {
 			log.Printf("-> error while backing up %s to %s", mpiCfg.defFile, backupFile)
 		}
