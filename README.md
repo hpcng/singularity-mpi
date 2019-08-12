@@ -11,8 +11,8 @@ This is not meant to create an exhaustive compatibility matrix but rather an ide
 # Preparation of the source code
 
 Before installing this tool, please make sure that Go and Singularity are both properly installed.
-Then, create the `$HOME/go/src/` directory: `mkdir -p $HOME/go/src/`.
-Finally, check-out the source code: `cd $HOME/go/src/ && git clone https://github.com/sylabs/singularity-mpi.git`.
+Then, create the `$HOME/go/src/github.com/sylabs` directory: `mkdir -p $HOME/go/src/github.com/sylabs`.
+Finally, check-out the source code: `cd $HOME/go/src/github.com/sylabs && git clone https://github.com/sylabs/singularity-mpi.git`.
 
 # Preparation of the host system
 
@@ -36,7 +36,7 @@ The Singularity-mpi tool ignores any version of MPI manually installed on the ho
 
 # Compilation
 
-To compile the tool, you just need to execute the following command from the top directory of the source code: `cd $HOME/go/src/singularity-mpi && make`.
+To compile the tool, you just need to execute the following command from the top directory of the source code: `cd $HOME/go/src/github.com/sylabs/singularity-mpi && make`.
 This will generate a `main` binary that can be used to run various experiments. Running `./main -h` command will display a help 
 message that describes different options you could use while running the tool. 
 
