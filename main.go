@@ -14,10 +14,10 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"singularity-mpi/checker"
-	cfg "singularity-mpi/configparser"
-	exp "singularity-mpi/experiments"
-	"singularity-mpi/results"
+	"singularity-mpi/internal/pkg/checker"
+	cfg "singularity-mpi/internal/pkg/configparser"
+	exp "singularity-mpi/internal/pkg/experiments"
+	"singularity-mpi/internal/pkg/results"
 )
 
 const (
