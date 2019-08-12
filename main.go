@@ -14,10 +14,11 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"singularity-mpi/internal/pkg/checker"
-	cfg "singularity-mpi/internal/pkg/configparser"
-	exp "singularity-mpi/internal/pkg/experiments"
-	"singularity-mpi/internal/pkg/results"
+	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
+	exp "github.com/sylabs/singularity-mpi/internal/pkg/experiments"
+	"github.com/sylabs/singularity-mpi/internal/pkg/results"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 )
 
 const (

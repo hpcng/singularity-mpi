@@ -12,8 +12,9 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	util "singularity-mpi/internal/pkg/util/file"
 	"strings"
+
+	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 // Constants related to Intel MPI
