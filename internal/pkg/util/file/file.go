@@ -25,6 +25,8 @@ const (
 	FormatTAR = "tar"
 )
 
+// FileExists is a utility function that checks whether a file exists or not.
+// If the file exits, FileExists return true; otherwise it returns false.
 func FileExists(path string) bool {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
@@ -33,6 +35,8 @@ func FileExists(path string) bool {
 	return !info.IsDir()
 }
 
+// DectectTarballFormat detects the format of a tarball so we can know how
+// to untar it.
 func DetectTarballFormat(filepath string) string {
 	if path.Ext(filepath) == ".bz2" {
 		return FormatBZ2
@@ -49,6 +53,7 @@ func DetectTarballFormat(filepath string) string {
 	return ""
 }
 
+// CopyFile is a utility functions that copies a file
 func CopyFile(src string, dst string) error {
 	log.Printf("* Copying %s to %s", src, dst)
 	// Check that the source file is valid

@@ -17,6 +17,7 @@ const (
 	HttpURL = "http"
 )
 
+// DetectURLType detects the type of the URL that is passed in.
 func DetectURLType(url string) string {
 	if url[:7] == "file://" {
 		return FileURL

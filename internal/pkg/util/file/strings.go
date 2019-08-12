@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+// CleanupString cleans up a string. This is convenient when a benchmark
+// returns colored text to the terminal that we then try to parse.
 func CleanupString(str string) string {
 	// Remove all color escape sequences from string
 	reg := regexp.MustCompile(`\\x1b\[[0-9]+m`)
