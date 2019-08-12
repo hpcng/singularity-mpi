@@ -16,10 +16,11 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"singularity-mpi/internal/pkg/checker"
-	util "singularity-mpi/internal/pkg/util/file"
 	"strings"
 	"time"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
+	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 // SysConfig captures some system configuration aspects that are necessary

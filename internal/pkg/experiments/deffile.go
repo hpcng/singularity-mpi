@@ -11,8 +11,9 @@ import (
 	"log"
 	"path"
 	"path/filepath"
-	util "singularity-mpi/internal/pkg/util/file"
 	"strings"
+
+	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 const (
