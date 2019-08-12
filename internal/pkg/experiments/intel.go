@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	util "singularity-mpi/internal/pkg/util/file"
 	"strings"
 )
 
@@ -50,11 +51,11 @@ func updateIntelMPIDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	destInstallConfFile := filepath.Join(mpiCfg.buildDir, intelInstallConfFile)
 	srcUninstallConfFile := filepath.Join(sysCfg.TemplateDir, "intel", intelUninstallConfFileTemplate)
 	destUninstallConfFile := filepath.Join(mpiCfg.buildDir, intelUninstallConfFile)
-	err := copyFile(srcInstallConfFile, destInstallConfFile)
+	err := util.CopyFile(srcInstallConfFile, destInstallConfFile)
 	if err != nil {
 		return fmt.Errorf("enable to copy %s to %s: %s", srcInstallConfFile, destInstallConfFile, err)
 	}
-	err = copyFile(srcUninstallConfFile, destUninstallConfFile)
+	err = util.CopyFile(srcUninstallConfFile, destUninstallConfFile)
 	if err != nil {
 		return fmt.Errorf("enable to copy %s to %s: %s", srcUninstallConfFile, destUninstallConfFile, err)
 	}
@@ -133,14 +134,14 @@ func setupIntelInstallScript(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	intelSilentInstallTemplate := filepath.Join(sysCfg.TemplateDir, "intel", intelInstallConfFileTemplate)
 	intelSilentInstallConfig := filepath.Join(mpiCfg.srcDir, intelInstallConfFile)
 	fmt.Printf("Copying %s to %s\n", intelSilentInstallTemplate, intelSilentInstallConfig)
-	err := copyFile(intelSilentInstallTemplate, intelSilentInstallConfig)
+	err := util.CopyFile(intelSilentInstallTemplate, intelSilentInstallConfig)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s: %s", intelSilentInstallTemplate, intelSilentInstallConfig, err)
 	}
 
 	intelSilentUninstallTemplate := filepath.Join(sysCfg.TemplateDir, "intel", intelUninstallConfFileTemplate)
 	intelSilentUninstallConfig := filepath.Join(mpiCfg.srcDir, intelUninstallConfFile)
-	err = copyFile(intelSilentUninstallTemplate, intelSilentUninstallConfig)
+	err = util.CopyFile(intelSilentUninstallTemplate, intelSilentUninstallConfig)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s: %s", intelSilentUninstallTemplate, intelSilentUninstallConfig, err)
 	}

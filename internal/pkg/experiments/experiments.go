@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -77,28 +76,9 @@ type Experiment struct {
 	URLContainerMPI     string
 }
 
-// Constants defining the URL types
-const (
-	fileURL = "file"
-	httpURL = "http"
-)
-
 const (
 	cmdTimeout = 10
 )
-
-func detectURLType(url string) string {
-	if url[:7] == "file://" {
-		return "file"
-	}
-
-	if url[:4] == "http" {
-		return "http"
-	}
-
-	// Unsupported type
-	return ""
-}
 
 func copyMPITarball(mpiCfg *mpiConfig) error {
 	// Some sanity checks
@@ -113,7 +93,7 @@ func copyMPITarball(mpiCfg *mpiConfig) error {
 
 	targetTarballPath := filepath.Join(mpiCfg.buildDir, mpiCfg.tarball)
 	// The begining of the URL starts with 'file://' which we do not want
-	err := copyFile(mpiCfg.url[7:], targetTarballPath)
+	err := util.CopyFile(mpiCfg.url[7:], targetTarballPath)
 	if err != nil {
 		return fmt.Errorf("cannot copy file %s to %s: %s", mpiCfg.url, targetTarballPath, err)
 	}
@@ -172,18 +152,18 @@ func getMPI(mpiCfg *mpiConfig) error {
 	}
 
 	// Detect the type of URL, e.g., file vs. http*
-	urlFormat := detectURLType(mpiCfg.url)
+	urlFormat := util.DetectURLType(mpiCfg.url)
 	if urlFormat == "" {
 		return fmt.Errorf("impossible to detect type from URL %s", mpiCfg.url)
 	}
 
 	switch urlFormat {
-	case fileURL:
+	case util.FileURL:
 		err := copyMPITarball(mpiCfg)
 		if err != nil {
 			return fmt.Errorf("impossible to copy the MPI tarball: %s", err)
 		}
-	case httpURL:
+	case util.HttpURL:
 		err := downloadMPI(mpiCfg)
 		if err != nil {
 			return fmt.Errorf("impossible to download MPI: %s", err)
@@ -342,22 +322,13 @@ func compileMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	return nil
 }
 
-func cleanupString(str string) string {
-	// Remove all color escape sequences from string
-	reg := regexp.MustCompile(`\\x1b\[[0-9]+m`)
-	str = reg.ReplaceAllString(str, "")
-
-	str = strings.Replace(str, `\x1b`+"[0m", "", -1)
-	return strings.Replace(str, `\x1b`+"[33m", "", -1)
-}
-
 func postExecutionDataMgt(exp Experiment, sysCfg *SysConfig, output string) (string, error) {
 	if sysCfg.NetPipe {
 		lines := strings.Split(output, "\n")
 		for _, line := range lines {
 			if strings.Contains(line, "Completed with") {
 				tokens := strings.Split(line, " ")
-				note := "max bandwidth: " + cleanupString(tokens[13]) + " " + cleanupString(tokens[14]) + "; latency: " + cleanupString(tokens[20]) + " " + cleanupString(tokens[21])
+				note := "max bandwidth: " + util.CleanupString(tokens[13]) + " " + util.CleanupString(tokens[14]) + "; latency: " + util.CleanupString(tokens[20]) + " " + util.CleanupString(tokens[21])
 				return note, nil
 			}
 		}
@@ -561,48 +532,6 @@ func installHostMPI(myCfg *mpiConfig, sysCfg *SysConfig) error {
 	err = compileMPI(myCfg, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to compile MPI: %s", err)
-	}
-
-	return nil
-}
-
-func copyFile(src string, dst string) error {
-	log.Printf("* Copying %s to %s", src, dst)
-	// Check that the source file is valid
-	srcStat, err := os.Stat(src)
-	if err != nil {
-		return fmt.Errorf("cannot access file %s: %s", src, err)
-	}
-
-	if !srcStat.Mode().IsRegular() {
-		return fmt.Errorf("invalid source file %s: %s", src, err)
-	}
-
-	// Actually do the copy
-	s, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open %s: %s", src, err)
-	}
-	defer s.Close()
-
-	d, err := os.Create(dst)
-	if err != nil {
-		return fmt.Errorf("failed to create %s: %s", dst, err)
-	}
-	defer d.Close()
-
-	_, err = io.Copy(d, s)
-	if err != nil {
-		return fmt.Errorf("unabel to copy file from %s to %s: %s", src, dst, err)
-	}
-
-	// Check whether the copy succeeded by comparing the sizes of the two files
-	dstStat, err := d.Stat()
-	if err != nil {
-		return fmt.Errorf("unable to get stat for %s: %s", d.Name(), err)
-	}
-	if srcStat.Size() != dstStat.Size() {
-		return fmt.Errorf("file copy failed, size is %d instead of %d", srcStat.Size(), dstStat.Size())
 	}
 
 	return nil
