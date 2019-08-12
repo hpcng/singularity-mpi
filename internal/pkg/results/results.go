@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	exp "singularity-mpi/experiments"
+	exp "singularity-mpi/internal/pkg/experiments"
 	"strings"
 )
 

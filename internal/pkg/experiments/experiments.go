@@ -17,7 +17,8 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"singularity-mpi/checker"
+	"singularity-mpi/internal/pkg/checker"
+	util "singularity-mpi/internal/pkg/util/file"
 	"strings"
 	"time"
 )
@@ -80,22 +81,6 @@ type Experiment struct {
 const (
 	fileURL = "file"
 	httpURL = "http"
-)
-
-// Constants defining the format of the MPI package
-const (
-	formatBZ2 = "bz2"
-	formatGZ  = "gz"
-	formatTAR = "tar"
-)
-
-// Constants related to Intel MPI
-const (
-	intelInstallPathPrefix         = "compilers_and_libraries/linux/mpi/intel64"
-	intelInstallConfFile           = "silent_install.cfg"
-	intelUninstallConfFile         = "silent_uninstall.cfg"
-	intelInstallConfFileTemplate   = intelInstallConfFile + ".tmpl"
-	intelUninstallConfFileTemplate = intelUninstallConfFile + ".tmpl"
 )
 
 const (
@@ -210,30 +195,6 @@ func getMPI(mpiCfg *mpiConfig) error {
 	return nil
 }
 
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
-}
-
-func detectTarballFormat(filepath string) string {
-	if path.Ext(filepath) == ".bz2" {
-		return formatBZ2
-	}
-
-	if path.Ext(filepath) == ".gz" {
-		return formatGZ
-	}
-
-	if path.Ext(filepath) == ".tar" {
-		return formatTAR
-	}
-
-	return ""
-}
-
 func unpackMPI(mpiCfg *mpiConfig) error {
 	log.Println("- Unpacking MPI...")
 
@@ -243,7 +204,7 @@ func unpackMPI(mpiCfg *mpiConfig) error {
 	}
 
 	// Figure out the extension of the tarball
-	format := detectTarballFormat(mpiCfg.srcPath)
+	format := util.DetectTarballFormat(mpiCfg.srcPath)
 
 	if format == "" {
 		return fmt.Errorf("failed to detect format of file %s", mpiCfg.srcPath)
@@ -259,11 +220,11 @@ func unpackMPI(mpiCfg *mpiConfig) error {
 	// Figure out the tar argument based on the format
 	tarArg := ""
 	switch format {
-	case formatBZ2:
+	case util.FormatBZ2:
 		tarArg = "-xjf"
-	case formatGZ:
+	case util.FormatGZ:
 		tarArg = "-xzf"
-	case formatTAR:
+	case util.FormatTAR:
 		tarArg = "-xf"
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
@@ -309,7 +270,7 @@ func configureMPI(mpiCfg *mpiConfig) error {
 
 	// If the source code does not have a configure file, we simply skip the step
 	configurePath := filepath.Join(mpiCfg.srcDir, "configure")
-	if !fileExists(configurePath) {
+	if !util.FileExists(configurePath) {
 		fmt.Printf("-> %s does not exist, skipping the configuration step\n", configurePath)
 		return nil
 	}
@@ -358,34 +319,6 @@ func runMake(mpiCfg *mpiConfig) error {
 	return nil
 }
 
-func runIntelScript(mpiCfg *mpiConfig, sysCfg *SysConfig, phase string) error {
-	var configFile string
-
-	fmt.Printf("Running %s script...\n", phase)
-
-	switch phase {
-	case "install":
-		configFile = intelInstallConfFile
-	case "uninstall":
-		configFile = intelUninstallConfFile
-	default:
-		return fmt.Errorf("unknown phase: %s", phase)
-	}
-
-	// Run the install or uninstall script
-	var stdout, stderr bytes.Buffer
-	cmd := exec.Command("./install.sh", "--silent", configFile)
-	cmd.Dir = mpiCfg.srcDir
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stdout
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
-	}
-
-	return nil
-}
-
 func compileMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	log.Println("- Compiling MPI...")
 	if mpiCfg.srcDir == "" {
@@ -393,7 +326,7 @@ func compileMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	}
 
 	makefilePath := filepath.Join(mpiCfg.srcDir, "Makefile")
-	if fileExists(makefilePath) {
+	if util.FileExists(makefilePath) {
 		return runMake(mpiCfg)
 	}
 
@@ -670,152 +603,6 @@ func copyFile(src string, dst string) error {
 	}
 	if srcStat.Size() != dstStat.Size() {
 		return fmt.Errorf("file copy failed, size is %d instead of %d", srcStat.Size(), dstStat.Size())
-	}
-
-	return nil
-}
-
-func doUpdateDefFile(myCfg *mpiConfig, sysCfg *SysConfig, compileCfg *compileConfig) error {
-	var err error
-
-	// Sanity checks
-	if myCfg.mpiVersion == "" || myCfg.buildDir == "" || myCfg.url == "" ||
-		myCfg.defFile == "" || compileCfg.mpiVersionTag == "" ||
-		compileCfg.mpiURLTag == "" || compileCfg.mpiTarballTag == "" ||
-		sysCfg.TargetUbuntuDistro == "" {
-		return fmt.Errorf("invalid parameter(s)")
-	}
-
-	if myCfg.tarball == "" {
-		myCfg.tarball = path.Base(myCfg.url)
-	}
-
-	data, err := ioutil.ReadFile(myCfg.defFile)
-	if err != nil {
-		return fmt.Errorf("failed to read %s: %s", myCfg.defFile, err)
-	}
-
-	var tarArgs string
-	format := detectTarballFormat(myCfg.tarball)
-	switch format {
-	case formatBZ2:
-		tarArgs = "-xjf"
-	case formatGZ:
-		tarArgs = "-xzf"
-	case formatTAR:
-		tarArgs = "-xf"
-	default:
-		return fmt.Errorf("un-supported tarball format for %s", myCfg.tarball)
-	}
-
-	if sysCfg.Debug {
-		log.Printf("--> Replacing %s with %s", compileCfg.mpiVersionTag, myCfg.mpiVersion)
-		log.Printf("--> Replacing %s with %s", compileCfg.mpiURLTag, myCfg.url)
-		log.Printf("--> Replacing %s with %s", compileCfg.mpiTarballTag, myCfg.tarball)
-		log.Printf("--> Replacing TARARGS with %s", tarArgs)
-	}
-
-	content := string(data)
-	content = strings.Replace(content, compileCfg.mpiVersionTag, myCfg.mpiVersion, -1)
-	content = strings.Replace(content, compileCfg.mpiURLTag, myCfg.url, -1)
-	content = strings.Replace(content, compileCfg.mpiTarballTag, myCfg.tarball, -1)
-	content = strings.Replace(content, "TARARGS", tarArgs, -1)
-	content = UpdateDefFileDistroCodename(content, sysCfg.TargetUbuntuDistro)
-
-	err = ioutil.WriteFile(myCfg.defFile, []byte(content), 0)
-	if err != nil {
-		return fmt.Errorf("failed to write file %s: %s", myCfg.defFile, err)
-	}
-
-	return nil
-}
-
-func generateDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
-	log.Println("- Generating Singularity defintion file...")
-	// Sanity checks
-	if mpiCfg.buildDir == "" {
-		return fmt.Errorf("invalid parameter(s)")
-	}
-
-	var defFileName string
-	var templateFileName string
-	switch mpiCfg.mpiImplm {
-	case "openmpi":
-		defFileName = "ubuntu_ompi.def"
-		if sysCfg.NetPipe {
-			defFileName = "ubuntu_ompi_netpipe.def"
-		}
-		if sysCfg.IMB {
-			defFileName = "ubuntu_ompi_imb.def"
-		}
-	case "mpich":
-		defFileName = "ubuntu_mpich.def"
-		if sysCfg.NetPipe {
-			defFileName = "ubuntu_mpich_netpipe.def"
-		}
-		if sysCfg.IMB {
-			defFileName = "ubuntu_mpich_imb.def"
-		}
-	case "intel":
-		defFileName = "ubuntu_intel.def"
-		if sysCfg.NetPipe {
-			defFileName = "ubuntu_intel_netpipe.def"
-		}
-		if sysCfg.IMB {
-			defFileName = "ubuntu_intel_imb.def"
-		}
-	default:
-		return fmt.Errorf("unsupported MPI implementation: %s", mpiCfg.mpiImplm)
-	}
-
-	templateFileName = defFileName + ".tmpl"
-
-	templateDefFile := filepath.Join(sysCfg.TemplateDir, templateFileName)
-	mpiCfg.defFile = filepath.Join(mpiCfg.buildDir, defFileName)
-
-	// Copy the definition file template to the temporary directory
-	err := copyFile(templateDefFile, mpiCfg.defFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s to %s: %s", templateDefFile, mpiCfg.defFile, err)
-	}
-
-	// Copy the test file
-	testFile := filepath.Join(sysCfg.TemplateDir, "mpitest.c")
-	destTestFile := filepath.Join(mpiCfg.buildDir, "mpitest.c")
-	err = copyFile(testFile, destTestFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s to %s: %s", testFile, destTestFile, err)
-	}
-
-	// Update the definition file for the specific version of MPI we are testing
-	switch mpiCfg.mpiImplm {
-	case "openmpi":
-		err := updateOMPIDefFile(mpiCfg, sysCfg)
-		if err != nil {
-			return fmt.Errorf("failed to update OMPI template: %s", err)
-		}
-	case "mpich":
-		err := updateMPICHDefFile(mpiCfg, sysCfg)
-		if err != nil {
-			return fmt.Errorf("failed to update MPICH template: %s", err)
-		}
-	case "intel":
-		err := updateIntelMPIDefFile(mpiCfg, sysCfg)
-		if err != nil {
-			return fmt.Errorf("failed to update IMPI template: %s", err)
-		}
-	default:
-		return fmt.Errorf("unsupported MPI implementation: %s", mpiCfg.mpiImplm)
-	}
-
-	// In debug mode, we save the def file that was generated to the scratch directory
-	if sysCfg.Debug {
-		backupFile := filepath.Join(sysCfg.ScratchDir, defFileName)
-		log.Printf("-> Backing up %s to %s", mpiCfg.defFile, backupFile)
-		err = copyFile(mpiCfg.defFile, backupFile)
-		if err != nil {
-			log.Printf("-> error while backing up %s to %s", mpiCfg.defFile, backupFile)
-		}
 	}
 
 	return nil

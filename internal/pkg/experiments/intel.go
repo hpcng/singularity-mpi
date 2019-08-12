@@ -6,11 +6,22 @@
 package experiments
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
+)
+
+// Constants related to Intel MPI
+const (
+	intelInstallPathPrefix         = "compilers_and_libraries/linux/mpi/intel64"
+	intelInstallConfFile           = "silent_install.cfg"
+	intelUninstallConfFile         = "silent_uninstall.cfg"
+	intelInstallConfFileTemplate   = intelInstallConfFile + ".tmpl"
+	intelUninstallConfFileTemplate = intelUninstallConfFile + ".tmpl"
 )
 
 func updateIntelMPIDefFile(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
@@ -138,6 +149,34 @@ func setupIntelInstallScript(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	err = updateIntelTemplates(mpiCfg, sysCfg)
 	if err != nil {
 		return fmt.Errorf("unable to update Intel templates: %s", err)
+	}
+
+	return nil
+}
+
+func runIntelScript(mpiCfg *mpiConfig, sysCfg *SysConfig, phase string) error {
+	var configFile string
+
+	fmt.Printf("Running %s script...\n", phase)
+
+	switch phase {
+	case "install":
+		configFile = intelInstallConfFile
+	case "uninstall":
+		configFile = intelUninstallConfFile
+	default:
+		return fmt.Errorf("unknown phase: %s", phase)
+	}
+
+	// Run the install or uninstall script
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("./install.sh", "--silent", configFile)
+	cmd.Dir = mpiCfg.srcDir
+	cmd.Stderr = &stderr
+	cmd.Stdout = &stdout
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 	}
 
 	return nil
