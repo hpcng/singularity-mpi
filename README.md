@@ -70,6 +70,10 @@ At the moment, we support two tests:
 
 ``./main -configfile `pwd`/etc/openmpi.conf -netpipe``
 
+## Run the tool with the default Open MPI versions and IMB
+
+``./main -configfile `pwd`/etc/openmpi.conf -imb``
+
 ## Run the tool with the default MPICH versions and a simple helloworld test
 
 ``./main -configfile `pwd`/etc/mpich.conf``
@@ -78,8 +82,25 @@ At the moment, we support two tests:
 
 ``./main -configfile `pwd`/etc/mpich.conf -netpipe``
 
+## Run the tool with the default MPICH versions and IMB
+
+``./main -configfile `pwd`/etc/mpich.conf -imb``
+
+## Run the tool with the default Intel MPI versions and a simple helloworld test
+
+``./main -configfile `pwd`/etc/intel.conf``
+
+## Run the tool with the default Intel MPI versions and Netpipe
+
+``./main -configfile `pwd`/etc/intel.conf -netpipe``
+
+## Run the tool with the default Intel MPI versions and collective operation test
+
+``./main -configfile `pwd`/etc/intel.conf -imb``
+
 These commands will run various MPI programs to test the compatibility between different versions:
 - a basic HelloWorld test,
-- NetPipe for points-to-point communications.
+- NetPipe for points-to-point communications,
+- IMB for collective communications.
 
 However, more tests will be included over time.
