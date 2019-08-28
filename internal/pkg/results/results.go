@@ -10,8 +10,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	exp "singularity-mpi/internal/pkg/experiments"
 	"strings"
+
+	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
 )
 
 // Result represents the result of a given experiment
