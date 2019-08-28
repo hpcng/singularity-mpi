@@ -15,8 +15,8 @@ import (
 	"strconv"
 
 	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
-	exp "github.com/sylabs/singularity-mpi/internal/pkg/experiments"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
+	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 )
