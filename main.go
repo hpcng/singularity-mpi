@@ -43,18 +43,6 @@ func getListExperiments(config *cfg.Config) []exp.Experiment {
 	return experiments
 }
 
-func getMPIImplemFromExperiments(experiments []exp.Experiment) string {
-	// Fair assumption: all experiments are based on the same MPI
-	// implementation (we actually check for that and the implementation
-	// is only included in the experiment structure so that the structure
-	// is self-contained).
-	if len(experiments) == 0 {
-		return ""
-	}
-
-	return experiments[0].MPIImplm
-}
-
 func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 	var results []results.Result
 
@@ -103,22 +91,6 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 		}
 	}
 	return results
-}
-
-func setDefaultOutputFile(experiments []exp.Experiment, sysCfg *exp.SysConfig) error {
-	// We get the MPI implementation from the list
-	mpiImplem := getMPIImplemFromExperiments(experiments)
-	sysCfg.OutputFile = mpiImplem + "-init-results.txt"
-
-	if sysCfg.NetPipe {
-		sysCfg.OutputFile = mpiImplem + "-netpipe-results.txt"
-	}
-
-	if sysCfg.IMB {
-		sysCfg.OutputFile = mpiImplem + "-imb-results.txt"
-	}
-
-	return nil
 }
 
 func main() {
@@ -211,17 +183,18 @@ func main() {
 
 	// Figure out all the experiments that need to be executed
 	experiments := getListExperiments(config)
+	mpiImplem := exp.GetMPIImplemFromExperiments(experiments)
 
 	// If the user did not specify an output file, we try to implicitly
 	// set a relevant name
 	if sysCfg.OutputFile == "" {
-		err = setDefaultOutputFile(experiments, &sysCfg)
+		err = exp.GetOutputFilename(mpiImplem, &sysCfg)
 		if err != nil {
 			log.Fatalf("failed to set default output filename: %s", err)
 		}
 	}
 
-	if experiments[0].MPIImplm == "intel" {
+	if mpiImplem == "intel" {
 		// Intel MPI is based on OFI so we read our OFI configuration file
 		ofiCfg, err := cfg.LoadOFIConfig(sysCfg.OfiCfgFile)
 		if err != nil {
@@ -247,5 +220,9 @@ func main() {
 	experimentsToRun := results.Pruning(experiments, existingResults)
 
 	// Run the experiments
-	run(experimentsToRun, &sysCfg)
+	if len(experimentsToRun) > 0 {
+		run(experimentsToRun, &sysCfg)
+	}
+
+	results.Analyse(mpiImplem)
 }

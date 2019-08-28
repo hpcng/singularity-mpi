@@ -612,3 +612,33 @@ func createMPIContainer(myCfg *mpiConfig, sysCfg *SysConfig) error {
 
 	return nil
 }
+
+// GetMPIImplemFromExperiments returns the MPI implementation that is associated
+// to the experiments
+func GetMPIImplemFromExperiments(experiments []Experiment) string {
+	// Fair assumption: all experiments are based on the same MPI
+	// implementation (we actually check for that and the implementation
+	// is only included in the experiment structure so that the structure
+	// is self-contained).
+	if len(experiments) == 0 {
+		return ""
+	}
+
+	return experiments[0].MPIImplm
+}
+
+// GetOutputFilename returns the name of the file that is associated to the experiments
+// to run
+func GetOutputFilename(mpiImplem string, sysCfg *SysConfig) error {
+	sysCfg.OutputFile = mpiImplem + "-init-results.txt"
+
+	if sysCfg.NetPipe {
+		sysCfg.OutputFile = mpiImplem + "-netpipe-results.txt"
+	}
+
+	if sysCfg.IMB {
+		sysCfg.OutputFile = mpiImplem + "-imb-results.txt"
+	}
+
+	return nil
+}
