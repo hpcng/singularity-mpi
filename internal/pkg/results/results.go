@@ -8,10 +8,13 @@ package results
 import (
 	"bufio"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
+	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
 )
 
@@ -84,4 +87,89 @@ func Pruning(experiments []exp.Experiment, existingResults []Result) []exp.Exper
 	}
 
 	return experimentsToRun
+}
+
+func lookupResult(r []Result, hostVersion string, containerVersion string) bool {
+	var i int
+	for i = 0; i < len(r); i++ {
+		if r[i].experiment.VersionHostMPI == hostVersion && r[i].experiment.VersionContainerMPI == containerVersion {
+			return r[i].pass
+		}
+	}
+
+	return false
+}
+
+func createCompatibilityMatrix(mpiImplem string, initFile string, netpipeFile string, imbFile string) error {
+	outputFile := mpiImplem + "_compatibility_matrix.txt"
+
+	initResults, err := Load(initFile)
+	if err != nil {
+		return err
+	}
+
+	netpipeResults, err := Load(netpipeFile)
+	if err != nil {
+		return err
+	}
+
+	imbResults, err := Load(imbFile)
+	if err != nil {
+		return err
+	}
+
+	compatibilityResults := ""
+
+	var i int
+	for i = 0; i < len(initResults); i++ {
+		testPassed := false
+
+		if initResults[i].pass {
+			passNetpipe := lookupResult(
+				netpipeResults,
+				initResults[i].experiment.VersionHostMPI,
+				initResults[i].experiment.VersionContainerMPI,
+			)
+			if passNetpipe {
+				passIMB := lookupResult(
+					imbResults,
+					initResults[i].experiment.VersionHostMPI,
+					initResults[i].experiment.VersionContainerMPI,
+				)
+				if passIMB {
+					testPassed = true
+				}
+			}
+		}
+
+		compatibilityResults += initResults[i].experiment.VersionHostMPI +
+			"\t" +
+			initResults[i].experiment.VersionContainerMPI +
+			"\t" +
+			strconv.FormatBool(testPassed) +
+			"\n"
+	}
+
+	err = ioutil.WriteFile(outputFile, []byte(compatibilityResults), 0777)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Analyse checks whether all the result files are present and if so, create
+// the compatibility matrix.
+func Analyse(mpiImplem string) {
+	// todo we need to make that better, it should not be hardcoded here
+	initOutputFile := mpiImplem + "-init-results.txt"
+	netpipeOutputFile := mpiImplem + "-netpipe-results.txt"
+	imbOutputFile := mpiImplem + "-imb-results.txt"
+
+	if util.FileExists(initOutputFile) && util.FileExists(netpipeOutputFile) && util.FileExists(imbOutputFile) {
+		err := createCompatibilityMatrix(mpiImplem, initOutputFile, netpipeOutputFile, imbOutputFile)
+		if err != nil {
+			log.Fatalf("Cannot create the compatibility matrix")
+		}
+	}
 }
