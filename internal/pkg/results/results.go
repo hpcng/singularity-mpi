@@ -97,7 +97,6 @@ func lookupResult(r []Result, hostVersion string, containerVersion string) bool 
 		}
 	}
 
-	log.Fatalf("experiment not found")
 	return false
 }
 
