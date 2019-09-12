@@ -95,3 +95,34 @@ func CopyFile(src string, dst string) error {
 
 	return nil
 }
+
+// OpenResultsFile opens the result files associated to the experiments
+func OpenResultsFile(filepath string) *os.File {
+	mode := os.O_APPEND | os.O_RDWR
+	if !FileExists(filepath) {
+		mode = os.O_RDWR | os.O_CREATE
+	}
+	f, err := os.OpenFile(filepath, mode, 0755)
+	if err != nil {
+		log.Printf("failed to open file %s: %s", filepath, err)
+		return nil
+	}
+
+	return f
+}
+
+// OpenLogFile opens the log file for the execution of a command
+func OpenLogFile(mpiImplem string) *os.File {
+	if mpiImplem == "" {
+		return nil
+	}
+
+	filename := "singularity-" + mpiImplem + ".log"
+	logFile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Printf("failed to create log file: %s", err)
+		return nil
+	}
+
+	return logFile
+}

@@ -19,6 +19,7 @@ import (
 	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
+	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 const (
@@ -51,9 +52,9 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 		log.Fatalf("invalid parameter(s)")
 	}
 
-	f, err := os.OpenFile(sysCfg.OutputFile, os.O_RDWR|os.O_CREATE, 0755)
-	if err != nil {
-		log.Fatalf("failed to open file %s: %s", sysCfg.OutputFile, err)
+	f := util.OpenResultsFile(sysCfg.OutputFile)
+	if f == nil {
+		log.Fatalf("impossible to open result file %s", sysCfg.OutputFile)
 	}
 	defer f.Close()
 
@@ -106,7 +107,6 @@ func main() {
 	sysCfg.EtcDir = filepath.Join(sysCfg.BinPath, "etc")
 	sysCfg.TemplateDir = filepath.Join(sysCfg.EtcDir, "templates")
 	sysCfg.OfiCfgFile = filepath.Join(sysCfg.EtcDir, "ofi.conf")
-	sysCfg.ScratchDir = filepath.Join(sysCfg.BinPath, "scratch")
 
 	/* Figure out the current path */
 	sysCfg.CurPath, err = os.Getwd()
@@ -123,6 +123,22 @@ func main() {
 	debug := flag.Bool("d", false, "Enable debug mode")
 
 	flag.Parse()
+
+	sysCfg.ConfigFile = *configFile
+	sysCfg.OutputFile = *outputFile
+	sysCfg.NetPipe = *netpipe
+	sysCfg.IMB = *imb
+
+	config, err := cfg.Parse(sysCfg.ConfigFile)
+	if err != nil {
+		log.Fatalf("cannot parse %s: %s", sysCfg.ConfigFile, err)
+	}
+	// Figure out all the experiments that need to be executed
+	experiments := getListExperiments(config)
+	mpiImplem := exp.GetMPIImplemFromExperiments(experiments)
+
+	scratchPath := "scratch-" + mpiImplem
+	sysCfg.ScratchDir = filepath.Join(sysCfg.BinPath, scratchPath)
 
 	// Save the options passed in through the command flags
 	if *debug {
@@ -145,17 +161,8 @@ func main() {
 	if !*verbose {
 		log.SetOutput(ioutil.Discard)
 	}
-	sysCfg.ConfigFile = *configFile
-	sysCfg.OutputFile = *outputFile
 	if *imb && *netpipe {
 		log.Fatal("please netpipe or imb, not both")
-	}
-	sysCfg.NetPipe = *netpipe
-	sysCfg.IMB = *imb
-
-	config, err := cfg.Parse(sysCfg.ConfigFile)
-	if err != nil {
-		log.Fatalf("cannot parse %s: %s", sysCfg.ConfigFile, err)
 	}
 
 	// Try to detect the local distro. If we cannot, it is not a big deal but we know that for example having
@@ -169,10 +176,7 @@ func main() {
 	}
 
 	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
-	logFile, err := os.OpenFile("singularity-mpi.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("failed to create log file: %s", err)
-	}
+	logFile := util.OpenLogFile(mpiImplem)
 	defer logFile.Close()
 	if *verbose {
 		nultiWriters := io.MultiWriter(os.Stdout, logFile)
@@ -180,10 +184,6 @@ func main() {
 	} else {
 		log.SetOutput(logFile)
 	}
-
-	// Figure out all the experiments that need to be executed
-	experiments := getListExperiments(config)
-	mpiImplem := exp.GetMPIImplemFromExperiments(experiments)
 
 	// If the user did not specify an output file, we try to implicitly
 	// set a relevant name

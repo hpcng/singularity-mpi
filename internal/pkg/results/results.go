@@ -167,6 +167,7 @@ func Analyse(mpiImplem string) {
 	imbOutputFile := mpiImplem + "-imb-results.txt"
 
 	if util.FileExists(initOutputFile) && util.FileExists(netpipeOutputFile) && util.FileExists(imbOutputFile) {
+		log.Println("All expected result files found, creating compatibility matrix...")
 		err := createCompatibilityMatrix(mpiImplem, initOutputFile, netpipeOutputFile, imbOutputFile)
 		if err != nil {
 			log.Fatalf("Cannot create the compatibility matrix")
