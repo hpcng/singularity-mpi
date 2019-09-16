@@ -41,6 +41,7 @@ type SysConfig struct {
 	OfiCfgFile         string // Absolute path to the OFI configuration file
 	Ifnet              string // Network interface to use (e.g., required to setup OFI)
 	Debug              bool   // Debug mode is active/inactive
+	Nrun               int    // Number of iterations, i.e., number of times the test is executed
 }
 
 type mpiConfig struct {
@@ -75,6 +76,12 @@ type Experiment struct {
 	URLHostMPI          string
 	VersionContainerMPI string
 	URLContainerMPI     string
+}
+
+type execResult struct {
+	err    error
+	stdout string
+	stderr string
 }
 
 const (
@@ -300,27 +307,31 @@ func runMake(mpiCfg *mpiConfig) error {
 	return nil
 }
 
-func compileMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
+func compileMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) execResult {
+	var res execResult
+
 	log.Println("- Compiling MPI...")
 	if mpiCfg.srcDir == "" {
-		return fmt.Errorf("invalid parameter(s)")
+		res.err = fmt.Errorf("invalid parameter(s)")
+		return res
 	}
 
 	makefilePath := filepath.Join(mpiCfg.srcDir, "Makefile")
 	if util.FileExists(makefilePath) {
-		return runMake(mpiCfg)
+		res.err = runMake(mpiCfg)
+		return res
 	}
 
 	fmt.Println("-> No Makefile, trying to figure out how to compile/install MPI...")
 	if mpiCfg.mpiImplm == "intel" {
-		err := setupIntelInstallScript(mpiCfg, sysCfg)
-		if err != nil {
-			return err
+		res.err = setupIntelInstallScript(mpiCfg, sysCfg)
+		if res.err != nil {
+			return res
 		}
 		return runIntelScript(mpiCfg, sysCfg, "install")
 	}
 
-	return nil
+	return res
 }
 
 func postExecutionDataMgt(exp Experiment, sysCfg *SysConfig, output string) (string, error) {
@@ -371,6 +382,42 @@ func getExtraMpirunArgs(mpiCfg *mpiConfig) []string {
 	}
 
 	return []string{""}
+}
+
+func saveErrorDetails(exp Experiment, sysCfg *SysConfig, res execResult) error {
+	experimentName := exp.VersionHostMPI + "-" + exp.VersionContainerMPI
+	targetDir := filepath.Join(sysCfg.BinPath, "errors", exp.MPIImplm, experimentName)
+
+	// If the directory exists, we delete it to start fresh
+	err := util.DirInit(targetDir)
+	if err != nil {
+		return fmt.Errorf("impossible to initialize directory %s: %s", targetDir, err)
+	}
+
+	stderrFile := filepath.Join(targetDir, "stderr.txt")
+	stdoutFile := filepath.Join(targetDir, "stdout.txt")
+
+	fstderr, err := os.Create(stderrFile)
+	if err != nil {
+		return err
+	}
+	defer fstderr.Close()
+	_, err = fstderr.WriteString(res.stderr)
+	if err != nil {
+		return err
+	}
+
+	fstdout, err := os.Create(stdoutFile)
+	if err != nil {
+		return err
+	}
+	defer fstdout.Close()
+	_, err = fstdout.WriteString(res.stdout)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Run configure, install and execute a given experiment
@@ -427,22 +474,24 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 
 	/* INSTALL MPI ON THE HOST */
 
-	err = installHostMPI(&myHostMPICfg, sysCfg)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to install host MPI: %s", err)
+	res := installHostMPI(&myHostMPICfg, sysCfg)
+	if res.err != nil {
+		_ = saveErrorDetails(exp, sysCfg, res)
+		return false, "", fmt.Errorf("failed to install host MPI: %s", res.err)
 	}
 	defer func() {
-		err = uninstallHostMPI(&myHostMPICfg, sysCfg)
-		if err != nil {
+		res = uninstallHostMPI(&myHostMPICfg, sysCfg)
+		if res.err != nil {
 			log.Fatal(err)
 		}
 	}()
 
 	/* CREATE THE MPI CONTAINER */
 
-	err = createMPIContainer(&myContainerMPICfg, sysCfg)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to create container: %s", err)
+	res = createMPIContainer(&myContainerMPICfg, sysCfg)
+	if res.err != nil {
+		_ = saveErrorDetails(exp, sysCfg, res)
+		return false, "", fmt.Errorf("failed to create container: %s", res.err)
 	}
 
 	/* PREPARE THE COMMAND TO RUN THE ACTUAL TEST */
@@ -486,7 +535,12 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	err = mpiCmd.Run()
 	if err != nil || ctx.Err() == context.DeadlineExceeded || re.Match(stdout.Bytes()) {
 		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
-		return false, "", nil
+		var res execResult
+		res.err = err
+		res.stderr = stderr.String()
+		res.stdout = stdout.String()
+		err = saveErrorDetails(exp, sysCfg, res)
+		return false, "", err
 	}
 
 	log.Printf("Successful run - stdout: %s; stderr: %s\n", stdout.String(), stderr.String())
@@ -502,40 +556,48 @@ func Run(exp Experiment, sysCfg *SysConfig) (bool, string, error) {
 	return true, note, nil
 }
 
-func uninstallHostMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
+func uninstallHostMPI(mpiCfg *mpiConfig, sysCfg *SysConfig) execResult {
+	var res execResult
+
 	log.Println("Uninstalling MPI on host...")
 
 	if mpiCfg.mpiImplm == "intel" {
 		return runIntelScript(mpiCfg, sysCfg, "uninstall")
 	}
 
-	return nil
+	return res
 }
 
-func installHostMPI(myCfg *mpiConfig, sysCfg *SysConfig) error {
+func installHostMPI(myCfg *mpiConfig, sysCfg *SysConfig) execResult {
+	var res execResult
+
 	log.Println("Installing MPI on host...")
-	err := getMPI(myCfg)
-	if err != nil {
-		return fmt.Errorf("failed to download MPI from %s: %s", myCfg.url, err)
+	res.err = getMPI(myCfg)
+	if res.err != nil {
+		res.err = fmt.Errorf("failed to download MPI from %s: %s", myCfg.url, res.err)
+		return res
 	}
 
-	err = unpackMPI(myCfg)
-	if err != nil {
-		return fmt.Errorf("failed to unpack MPI: %s", err)
+	res.err = unpackMPI(myCfg)
+	if res.err != nil {
+		res.err = fmt.Errorf("failed to unpack MPI: %s", res.err)
+		return res
 	}
 
 	// Right now, we assume we do not have to install autotools, which is a bad assumption
-	err = configureMPI(myCfg)
-	if err != nil {
-		return fmt.Errorf("failed to configure MPI: %s", err)
+	res.err = configureMPI(myCfg)
+	if res.err != nil {
+		res.err = fmt.Errorf("failed to configure MPI: %s", res.err)
+		return res
 	}
 
-	err = compileMPI(myCfg, sysCfg)
-	if err != nil {
-		return fmt.Errorf("failed to compile MPI: %s", err)
+	res = compileMPI(myCfg, sysCfg)
+	if res.err != nil {
+		res.stderr = fmt.Sprintf("failed to compile MPI: %s", res.err)
+		return res
 	}
 
-	return nil
+	return res
 }
 
 func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
@@ -598,19 +660,21 @@ func createContainerImage(myCfg *mpiConfig, sysCfg *SysConfig) error {
 }
 
 // CreateMPIContainer creates a container based on a specific configuration.
-func createMPIContainer(myCfg *mpiConfig, sysCfg *SysConfig) error {
+func createMPIContainer(myCfg *mpiConfig, sysCfg *SysConfig) execResult {
+	var res execResult
+
 	log.Println("Creating MPI container...")
-	err := generateDefFile(myCfg, sysCfg)
-	if err != nil {
-		return fmt.Errorf("failed to generate Singularity definition file: %s", err)
+	res.err = generateDefFile(myCfg, sysCfg)
+	if res.err != nil {
+		res.stderr = fmt.Sprintf("failed to generate Singularity definition file: %s", res.err)
 	}
 
-	err = createContainerImage(myCfg, sysCfg)
-	if err != nil {
-		return fmt.Errorf("failed to create container image: %s", err)
+	res.err = createContainerImage(myCfg, sysCfg)
+	if res.err != nil {
+		res.stderr = fmt.Sprintf("failed to create container image: %s", res.err)
 	}
 
-	return nil
+	return res
 }
 
 // GetMPIImplemFromExperiments returns the MPI implementation that is associated

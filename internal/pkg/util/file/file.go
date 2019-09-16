@@ -126,3 +126,16 @@ func OpenLogFile(mpiImplem string) *os.File {
 
 	return logFile
 }
+
+// DirInit ensures that the target directory is clean/empty
+func DirInit(path string) error {
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		os.RemoveAll(path)
+	}
+	err := os.MkdirAll(path, 0755)
+	if err != nil {
+		log.Fatalf("failed to create scratch directory: %s", err)
+	}
+
+	return nil
+}

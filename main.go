@@ -7,6 +7,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -44,8 +45,21 @@ func getListExperiments(config *cfg.Config) []exp.Experiment {
 	return experiments
 }
 
+func runExperiment(e exp.Experiment, sysCfg *exp.SysConfig) (results.Result, error) {
+	var res results.Result
+	var err error
+
+	res.Experiment = e
+	res.Pass, res.Note, err = exp.Run(e, sysCfg)
+	if err != nil {
+		return res, fmt.Errorf("failure during the execution of the experiment: %s", err)
+	}
+
+	return res, nil
+}
+
 func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
-	var results []results.Result
+	var newResults []results.Result
 
 	/* Sanity checks */
 	if sysCfg == nil || sysCfg.OutputFile == "" {
@@ -58,40 +72,60 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 	}
 	defer f.Close()
 
+	success := true
+	failure := false
 	for _, e := range experiments {
-		log.Printf("Running experiment with host MPI %s and container MPI %s\n", e.VersionHostMPI, e.VersionContainerMPI)
-		success, note, err := exp.Run(e, sysCfg)
-		if err != nil {
-			log.Printf("WARNING! Cannot run experiment: %s", err)
-			_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tERROR\t" + note + "\n")
+		var newRes results.Result
+
+		var i int
+		for i = 0; i < sysCfg.Nrun; i++ {
+			log.Printf("Running experiment %d/%d with host MPI %s and container MPI %s\n", i+1, sysCfg.Nrun, e.VersionHostMPI, e.VersionContainerMPI)
+			newRes, err := runExperiment(e, sysCfg)
+			if err != nil {
+				log.Fatalf("failure during the execution of experiment: %s", err)
+			}
+			newResults = append(newResults, newRes)
+
+			if err != nil {
+				success = false
+				failure = false
+				log.Printf("WARNING! Cannot run experiment: %s", err)
+			}
+
+			if !newRes.Pass {
+				success = false
+			}
+		}
+
+		if failure {
+			_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tERROR\t" + newRes.Note + "\n")
 			if err != nil {
 				log.Fatalf("failed to write result: %s", err)
 			}
+		} else if !success {
+			log.Println("Experiment failed")
+			_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\t" + newRes.Note + "\n")
+			if err != nil {
+				log.Fatalf("failed to write result: %s", err)
+			}
+			err = f.Sync()
+			if err != nil {
+				log.Fatalf("failed to sync log file: %s", err)
+			}
 		} else {
-			if success {
-				log.Println("Experiment succeeded")
-				_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tPASS\t" + note + "\n")
-				if err != nil {
-					log.Fatalf("failed to write result: %s", err)
-				}
-				err = f.Sync()
-				if err != nil {
-					log.Fatalf("failed to sync log file: %s", err)
-				}
-			} else {
-				log.Println("Experiment failed")
-				_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\t" + note + "\n")
-				if err != nil {
-					log.Fatalf("failed to write result: %s", err)
-				}
-				err = f.Sync()
-				if err != nil {
-					log.Fatalf("failed to sync log file: %s", err)
-				}
+			log.Println("Experiment succeeded")
+			_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tPASS\t" + newRes.Note + "\n")
+			if err != nil {
+				log.Fatalf("failed to write result: %s", err)
+			}
+			err = f.Sync()
+			if err != nil {
+				log.Fatalf("failed to sync log file: %s", err)
 			}
 		}
 	}
-	return results
+
+	return newResults
 }
 
 func main() {
@@ -121,6 +155,7 @@ func main() {
 	netpipe := flag.Bool("netpipe", false, "Run NetPipe as test")
 	imb := flag.Bool("imb", false, "Run IMB as test")
 	debug := flag.Bool("d", false, "Enable debug mode")
+	nRun := flag.Int("n", 1, "Number of iterations")
 
 	flag.Parse()
 
@@ -128,6 +163,7 @@ func main() {
 	sysCfg.OutputFile = *outputFile
 	sysCfg.NetPipe = *netpipe
 	sysCfg.IMB = *imb
+	sysCfg.Nrun = *nRun
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
@@ -145,12 +181,9 @@ func main() {
 		*verbose = true
 		sysCfg.Debug = *debug
 		// If the scratch dir exists, we delete it to start fresh
-		if _, err := os.Stat(sysCfg.ScratchDir); !os.IsNotExist(err) {
-			os.RemoveAll(sysCfg.ScratchDir)
-		}
-		err := os.MkdirAll(sysCfg.ScratchDir, 0755)
+		err := util.DirInit(sysCfg.ScratchDir)
 		if err != nil {
-			log.Fatalf("failed to create scratch directory: %s", err)
+			log.Fatalf("failed to initialize directory %s: %s", sysCfg.ScratchDir, err)
 		}
 
 		err = checker.CheckSystemConfig()
