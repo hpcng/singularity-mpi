@@ -156,8 +156,9 @@ func setupIntelInstallScript(mpiCfg *mpiConfig, sysCfg *SysConfig) error {
 	return nil
 }
 
-func runIntelScript(mpiCfg *mpiConfig, sysCfg *SysConfig, phase string) error {
+func runIntelScript(mpiCfg *mpiConfig, sysCfg *SysConfig, phase string) execResult {
 	var configFile string
+	var res execResult
 
 	fmt.Printf("Running %s script...\n", phase)
 
@@ -167,7 +168,8 @@ func runIntelScript(mpiCfg *mpiConfig, sysCfg *SysConfig, phase string) error {
 	case "uninstall":
 		configFile = intelUninstallConfFile
 	default:
-		return fmt.Errorf("unknown phase: %s", phase)
+		res.err = fmt.Errorf("unknown phase: %s", phase)
+		return res
 	}
 
 	// Run the install or uninstall script
@@ -176,10 +178,14 @@ func runIntelScript(mpiCfg *mpiConfig, sysCfg *SysConfig, phase string) error {
 	cmd.Dir = mpiCfg.srcDir
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
-	}
+	res.err = cmd.Run()
+	/*
+		if err != nil {
+			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+		}
+	*/
+	res.stderr = stderr.String()
+	res.stdout = stdout.String()
 
-	return nil
+	return res
 }

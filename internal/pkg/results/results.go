@@ -20,8 +20,9 @@ import (
 
 // Result represents the result of a given experiment
 type Result struct {
-	experiment exp.Experiment
-	pass       bool
+	Experiment exp.Experiment
+	Pass       bool
+	Note       string
 }
 
 // Load reads a output file and load the list of experiments that are in the file
@@ -49,14 +50,14 @@ func Load(outputFile string) ([]Result, error) {
 		if len(words) < 3 {
 			return existingResults, fmt.Errorf("invalid format: %s", line)
 		}
-		newResult.experiment.VersionHostMPI = words[0]
-		newResult.experiment.VersionContainerMPI = words[1]
+		newResult.Experiment.VersionHostMPI = words[0]
+		newResult.Experiment.VersionContainerMPI = words[1]
 		result := words[2]
 		switch result {
 		case "PASS":
-			newResult.pass = true
+			newResult.Pass = true
 		case "FAIL":
-			newResult.pass = false
+			newResult.Pass = false
 		default:
 			return existingResults, fmt.Errorf("invalid experiment result: %s", result)
 		}
@@ -74,7 +75,7 @@ func Pruning(experiments []exp.Experiment, existingResults []Result) []exp.Exper
 	for _, experiment := range experiments {
 		found := false
 		for _, result := range existingResults {
-			if experiment.VersionHostMPI == result.experiment.VersionHostMPI && experiment.VersionContainerMPI == result.experiment.VersionContainerMPI {
+			if experiment.VersionHostMPI == result.Experiment.VersionHostMPI && experiment.VersionContainerMPI == result.Experiment.VersionContainerMPI {
 				log.Printf("We already have results for %s on the host and %s in a container, skipping...\n", experiment.VersionHostMPI, experiment.VersionContainerMPI)
 				found = true
 				break
@@ -92,8 +93,8 @@ func Pruning(experiments []exp.Experiment, existingResults []Result) []exp.Exper
 func lookupResult(r []Result, hostVersion string, containerVersion string) bool {
 	var i int
 	for i = 0; i < len(r); i++ {
-		if r[i].experiment.VersionHostMPI == hostVersion && r[i].experiment.VersionContainerMPI == containerVersion {
-			return r[i].pass
+		if r[i].Experiment.VersionHostMPI == hostVersion && r[i].Experiment.VersionContainerMPI == containerVersion {
+			return r[i].Pass
 		}
 	}
 
@@ -124,17 +125,17 @@ func createCompatibilityMatrix(mpiImplem string, initFile string, netpipeFile st
 	for i = 0; i < len(initResults); i++ {
 		testPassed := false
 
-		if initResults[i].pass {
+		if initResults[i].Pass {
 			passNetpipe := lookupResult(
 				netpipeResults,
-				initResults[i].experiment.VersionHostMPI,
-				initResults[i].experiment.VersionContainerMPI,
+				initResults[i].Experiment.VersionHostMPI,
+				initResults[i].Experiment.VersionContainerMPI,
 			)
 			if passNetpipe {
 				passIMB := lookupResult(
 					imbResults,
-					initResults[i].experiment.VersionHostMPI,
-					initResults[i].experiment.VersionContainerMPI,
+					initResults[i].Experiment.VersionHostMPI,
+					initResults[i].Experiment.VersionContainerMPI,
 				)
 				if passIMB {
 					testPassed = true
@@ -142,9 +143,9 @@ func createCompatibilityMatrix(mpiImplem string, initFile string, netpipeFile st
 			}
 		}
 
-		compatibilityResults += initResults[i].experiment.VersionHostMPI +
+		compatibilityResults += initResults[i].Experiment.VersionHostMPI +
 			"\t" +
-			initResults[i].experiment.VersionContainerMPI +
+			initResults[i].Experiment.VersionContainerMPI +
 			"\t" +
 			strconv.FormatBool(testPassed) +
 			"\n"
