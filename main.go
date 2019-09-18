@@ -205,7 +205,7 @@ func main() {
 	imb := flag.Bool("imb", false, "Run IMB as test")
 	debug := flag.Bool("d", false, "Enable debug mode")
 	nRun := flag.Int("n", 1, "Number of iterations")
-	appContainizer := flag.String("app-packager", "", "Path to the configuration file for automatically containerization an application")
+	appContainizer := flag.String("app-containizer", "", "Path to the configuration file for automatically containerization an application")
 
 	flag.Parse()
 
