@@ -6,11 +6,10 @@
 package configparser
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"regexp"
 	"strings"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 )
 
 // Config represents the configuration of the tests to run
@@ -87,12 +86,14 @@ func detectMpiImplem(line string) (string, string) {
 
 // Parse go through the configuration file to load the associated configuration
 func Parse(file string) (*Config, error) {
-	// Open the config file
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, fmt.Errorf("cannot open file: %s", err)
-	}
-	defer f.Close()
+	/*
+		// Open the config file
+		f, err := os.Open(file)
+		if err != nil {
+			return nil, fmt.Errorf("cannot open file: %s", err)
+		}
+		defer f.Close()
+	*/
 
 	// Allocate a new config data structure
 	config := new(Config)
@@ -100,27 +101,16 @@ func Parse(file string) (*Config, error) {
 
 	config.MpiMap = make(map[string]string)
 
-	// We start to read the file line by line
-	lineReader := bufio.NewScanner(f)
-	for lineReader.Scan() {
-		line := lineReader.Text()
+	kvs, err := kv.LoadKeyValueConfig(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse %s: %s", file, err)
+	}
 
-		// We skip comments
-		re1 := regexp.MustCompile(`\s*#`)
-		commentMatch := re1.FindStringSubmatch(line)
-		if len(commentMatch) != 0 {
-			continue
-		}
-
-		// We skip empty lines
-		if line == "" {
-			continue
-		}
-
+	for _, kv := range kvs {
 		// If we did not detect the MPI implementation yet, we try to detect it
-		implem, version := detectMpiImplem(line)
+		implem, version := detectMpiImplem(kv.Value)
 		if implem == "" || version == "" {
-			return nil, fmt.Errorf("cannot detect the MPI implementation from %s", line)
+			return nil, fmt.Errorf("cannot detect the MPI implementation from %s", kv.Value)
 		}
 
 		// If we did not detect the MPI implementation yet, we save it
@@ -130,7 +120,7 @@ func Parse(file string) (*Config, error) {
 			return nil, fmt.Errorf("Detected two implementations of MPI (%s and %s)", config.MPIImplem, implem)
 		}
 
-		config.MpiMap[version] = line
+		config.MpiMap[version] = kv.Value
 	}
 
 	return config, nil

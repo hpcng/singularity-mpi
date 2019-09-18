@@ -3,17 +3,21 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-package experiments
+package mpi
 
-import "fmt"
+import (
+	"fmt"
 
-func updateOMPIDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
+	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+)
+
+func updateOMPIDefFile(myCfg *Config, sysCfg *sys.Config) error {
 	var compileCfg compileConfig
 	compileCfg.mpiVersionTag = "OMPIVERSION"
 	compileCfg.mpiURLTag = "OMPIURL"
 	compileCfg.mpiTarballTag = "OMPITARBALL"
 
-	err := doUpdateDefFile(myCfg, sysCfg, &compileCfg)
+	err := updateDeffile(myCfg, sysCfg, &compileCfg)
 	if err != nil {
 		return fmt.Errorf("failed to update Open MPI definition file: %s", err)
 	}

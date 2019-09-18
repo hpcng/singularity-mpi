@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+main
 
 # Test binary, build with `go test -c`
 *.test
@@ -12,7 +13,12 @@
 *.out
 
 # Scratch/temp directories
-scratch/
+scratch*/
+errors/
 
 # Result files
 *-results.txt*
+*matrix.txt*
+
+# Log files
+*.log

@@ -35,6 +35,19 @@ func FileExists(path string) bool {
 	return !info.IsDir()
 }
 
+// GetTarOpts returns the arguments to use with tar based on the format of the tarball
+func GetTarArgs(format string) string {
+	switch format {
+	case FormatBZ2:
+		return "-xjf"
+	case FormatGZ:
+		return "-xzf"
+	case FormatTAR:
+		return "-xf"
+	}
+	return ""
+}
+
 // DectectTarballFormat detects the format of a tarball so we can know how
 // to untar it.
 func DetectTarballFormat(filepath string) string {

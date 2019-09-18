@@ -14,13 +14,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
-	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
 )
 
 // Result represents the result of a given experiment
 type Result struct {
-	Experiment exp.Experiment
+	Experiment mpi.Experiment
 	Pass       bool
 	Note       string
 }
@@ -68,9 +68,9 @@ func Load(outputFile string) ([]Result, error) {
 }
 
 // Pruning removes the experiments for which we already have results
-func Pruning(experiments []exp.Experiment, existingResults []Result) []exp.Experiment {
+func Pruning(experiments []mpi.Experiment, existingResults []Result) []mpi.Experiment {
 	// No optimization at the moment, double loop and creation of a new array
-	var experimentsToRun []exp.Experiment
+	var experimentsToRun []mpi.Experiment
 	//	for j := 0; j < len(experiments); j++ {
 	for _, experiment := range experiments {
 		found := false

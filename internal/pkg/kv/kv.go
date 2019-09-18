@@ -3,7 +3,7 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-package configparser
+package kv
 
 import (
 	"bufio"
@@ -13,25 +13,44 @@ import (
 	"strings"
 )
 
-// OFIConfig is the structure gathering all the configuration details relevant for OFI.
-// These details are loaded from the tool's OFI configuration file.
-type OFIConfig struct {
-	Ifnet string
+// KV represents a key/value pair
+type KV struct {
+	// Key of the pair
+	Key string
+
+	// Value of the pair
+	Value string
 }
 
-// LoadOFIConfig reads the OFI configuration file and return the associated data structure.
-func LoadOFIConfig(filepath string) (*OFIConfig, error) {
+// GetValue returns the value of a given key from a slice of key/value pairs
+func GetValue(kvs []KV, key string) string {
+	for _, kv := range kvs {
+		if kv.Key == key {
+			return kv.Value
+		}
+	}
+
+	return ""
+}
+
+// LoadKeyValueConfig loads all the key/value pairs from a configure file with a compatible syntax
+func LoadKeyValueConfig(filepath string) ([]KV, error) {
 	f, err := os.Open(filepath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open %s: %s", filepath, err)
 	}
 	defer f.Close()
 
-	config := new(OFIConfig)
+	var data []KV
 
 	lineReader := bufio.NewScanner(f)
 	for lineReader.Scan() {
 		line := lineReader.Text()
+
+		// We skip empty lines
+		if line == "" {
+			continue
+		}
 
 		// We skip comments
 		re1 := regexp.MustCompile(`\s*#`)
@@ -45,19 +64,15 @@ func LoadOFIConfig(filepath string) (*OFIConfig, error) {
 		if len(words) != 2 {
 			return nil, fmt.Errorf("invalid entry format: %s", line)
 		}
-		key := words[0]
-		value := words[1]
-		key = strings.Trim(key, " \t")
-		value = strings.Trim(value, " \t")
 
-		switch key {
-		case "ifnet":
-			if value == "<your network interface>" {
-				return nil, fmt.Errorf("ifnet is not properly defined in %s, please update your configuration file", filepath)
-			}
-			config.Ifnet = value
-		}
+		var newKV KV
+		newKV.Key = words[0]
+		newKV.Value = words[1]
+		newKV.Key = strings.Trim(newKV.Key, " \t")
+		newKV.Value = strings.Trim(newKV.Value, " \t")
+
+		data = append(data, newKV)
 	}
 
-	return config, nil
+	return data, nil
 }

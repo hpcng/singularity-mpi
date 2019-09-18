@@ -3,17 +3,21 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-package experiments
+package mpi
 
-import "fmt"
+import (
+	"fmt"
 
-func updateMPICHDefFile(myCfg *mpiConfig, sysCfg *SysConfig) error {
+	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+)
+
+func updateMPICHDefFile(myCfg *Config, sysCfg *sys.Config) error {
 	var compileCfg compileConfig
 	compileCfg.mpiVersionTag = "MPICHVERSION"
 	compileCfg.mpiURLTag = "MPICHURL"
 	compileCfg.mpiTarballTag = "MPICHTARBALL"
 
-	err := doUpdateDefFile(myCfg, sysCfg, &compileCfg)
+	err := updateDeffile(myCfg, sysCfg, &compileCfg)
 	if err != nil {
 		return fmt.Errorf("failed to update MPICH definition file: %s", err)
 	}

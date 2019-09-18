@@ -15,8 +15,12 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/sylabs/singularity-mpi/pkg/containizer"
+
 	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
+	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
@@ -27,11 +31,11 @@ const (
 	defaultUbuntuDistro = "disco"
 )
 
-func getListExperiments(config *cfg.Config) []exp.Experiment {
-	var experiments []exp.Experiment
+func getListExperiments(config *cfg.Config) []mpi.Experiment {
+	var experiments []mpi.Experiment
 	for mpi1, mpi1url := range config.MpiMap {
 		for mpi2, mpi2url := range config.MpiMap {
-			newExperiment := exp.Experiment{
+			newExperiment := mpi.Experiment{
 				MPIImplm:            config.MPIImplem,
 				VersionHostMPI:      mpi1,
 				VersionContainerMPI: mpi2,
@@ -45,7 +49,7 @@ func getListExperiments(config *cfg.Config) []exp.Experiment {
 	return experiments
 }
 
-func runExperiment(e exp.Experiment, sysCfg *exp.SysConfig) (results.Result, error) {
+func runExperiment(e mpi.Experiment, sysCfg *sys.Config) (results.Result, error) {
 	var res results.Result
 	var err error
 
@@ -58,7 +62,7 @@ func runExperiment(e exp.Experiment, sysCfg *exp.SysConfig) (results.Result, err
 	return res, nil
 }
 
-func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
+func run(experiments []mpi.Experiment, sysCfg *sys.Config) []results.Result {
 	var newResults []results.Result
 
 	/* Sanity checks */
@@ -72,9 +76,9 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 	}
 	defer f.Close()
 
-	success := true
-	failure := false
 	for _, e := range experiments {
+		success := true
+		failure := false
 		var newRes results.Result
 
 		var i int
@@ -128,8 +132,53 @@ func run(experiments []exp.Experiment, sysCfg *exp.SysConfig) []results.Result {
 	return newResults
 }
 
+func testMPI(mpiImplem string, experiments []mpi.Experiment, sysCfg sys.Config) error {
+	// If the user did not specify an output file, we try to implicitly
+	// set a relevant name
+	if sysCfg.OutputFile == "" {
+		err := exp.GetOutputFilename(mpiImplem, &sysCfg)
+		if err != nil {
+			log.Fatalf("failed to set default output filename: %s", err)
+		}
+	}
+
+	if mpiImplem == "intel" {
+		// Intel MPI is based on OFI so we read our OFI configuration file
+		ofiCfg, err := cfg.LoadOFIConfig(sysCfg.OfiCfgFile)
+		if err != nil {
+			log.Fatalf("failed to read the OFI configuration file: %s", err)
+		}
+		sysCfg.Ifnet = ofiCfg.Ifnet
+	}
+
+	// Display configuration
+	log.Println("Current directory:", sysCfg.CurPath)
+	log.Println("Binary path:", sysCfg.BinPath)
+	log.Println("Output file:", sysCfg.OutputFile)
+	log.Println("Running NetPipe:", strconv.FormatBool(sysCfg.NetPipe))
+	log.Println("Debug mode:", sysCfg.Debug)
+
+	// Load the results we already have in result file
+	existingResults, err := results.Load(sysCfg.OutputFile)
+	if err != nil {
+		log.Fatalf("failed to parse output file %s: %s", sysCfg.OutputFile, err)
+	}
+
+	// Remove the results we already have from list of experiments to run
+	experimentsToRun := results.Pruning(experiments, existingResults)
+
+	// Run the experiments
+	if len(experimentsToRun) > 0 {
+		run(experimentsToRun, &sysCfg)
+	}
+
+	results.Analyse(mpiImplem)
+
+	return nil
+}
+
 func main() {
-	var sysCfg exp.SysConfig
+	var sysCfg sys.Config
 
 	/* Figure out the directory of this binary */
 	bin, err := os.Executable()
@@ -156,6 +205,7 @@ func main() {
 	imb := flag.Bool("imb", false, "Run IMB as test")
 	debug := flag.Bool("d", false, "Enable debug mode")
 	nRun := flag.Int("n", 1, "Number of iterations")
+	appContainizer := flag.String("app-packager", "", "Path to the configuration file for automatically containerization an application")
 
 	flag.Parse()
 
@@ -164,6 +214,7 @@ func main() {
 	sysCfg.NetPipe = *netpipe
 	sysCfg.IMB = *imb
 	sysCfg.Nrun = *nRun
+	sysCfg.AppContainizer = *appContainizer
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
@@ -218,44 +269,15 @@ func main() {
 		log.SetOutput(logFile)
 	}
 
-	// If the user did not specify an output file, we try to implicitly
-	// set a relevant name
-	if sysCfg.OutputFile == "" {
-		err = exp.GetOutputFilename(mpiImplem, &sysCfg)
+	if sysCfg.AppContainizer != "" {
+		err := containizer.ContainerizeApp(&sysCfg)
 		if err != nil {
-			log.Fatalf("failed to set default output filename: %s", err)
+			log.Fatalf("failed to create container for app: %s", err)
+		}
+	} else {
+		err := testMPI(mpiImplem, experiments, sysCfg)
+		if err != nil {
+			log.Fatalf("failed test MPI: %s", err)
 		}
 	}
-
-	if mpiImplem == "intel" {
-		// Intel MPI is based on OFI so we read our OFI configuration file
-		ofiCfg, err := cfg.LoadOFIConfig(sysCfg.OfiCfgFile)
-		if err != nil {
-			log.Fatalf("failed to read the OFI configuration file: %s", err)
-		}
-		sysCfg.Ifnet = ofiCfg.Ifnet
-	}
-
-	// Display configuration
-	log.Println("Current directory:", sysCfg.CurPath)
-	log.Println("Binary path:", sysCfg.BinPath)
-	log.Println("Output file:", sysCfg.OutputFile)
-	log.Println("Running NetPipe:", strconv.FormatBool(sysCfg.NetPipe))
-	log.Println("Debug mode:", sysCfg.Debug)
-
-	// Load the results we already have in result file
-	existingResults, err := results.Load(sysCfg.OutputFile)
-	if err != nil {
-		log.Fatalf("failed to parse output file %s: %s", *outputFile, err)
-	}
-
-	// Remove the results we already have from list of experiments to run
-	experimentsToRun := results.Pruning(experiments, existingResults)
-
-	// Run the experiments
-	if len(experimentsToRun) > 0 {
-		run(experimentsToRun, &sysCfg)
-	}
-
-	results.Analyse(mpiImplem)
 }
