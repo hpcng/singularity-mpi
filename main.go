@@ -206,6 +206,7 @@ func main() {
 	debug := flag.Bool("d", false, "Enable debug mode")
 	nRun := flag.Int("n", 1, "Number of iterations")
 	appContainizer := flag.String("app-containizer", "", "Path to the configuration file for automatically containerization an application")
+	upload := flag.Bool("upload", false, "Upload generated images (appropriate configuration files need to specify the registery's URL")
 
 	flag.Parse()
 
@@ -215,6 +216,7 @@ func main() {
 	sysCfg.IMB = *imb
 	sysCfg.Nrun = *nRun
 	sysCfg.AppContainizer = *appContainizer
+	sysCfg.Upload = *upload
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {

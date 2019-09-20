@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
+	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
@@ -103,8 +104,46 @@ func generateOMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config)
 	ompitarball := path.Base(mpiCfg.URL)
 	tarballFormat := util.DetectTarballFormat(ompitarball)
 	tarArgs := util.GetTarArgs(tarballFormat)
+	linuxDistro := "ubuntu"    // todo: do not hardcode
+	appName := "NetPIPE-5.1.4" // todo: do not hardcode
 
 	_, err = f.WriteString("Bootstrap: docker\nFrom: " + mpiCfg.Distro + "\n\n")
+	if err != nil {
+		return err
+	}
+
+	// Add labels
+	_, err = f.WriteString("%labels\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\tLinux_distribution " + linuxDistro + "\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\tLinux_version " + mpiCfg.Distro + "\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\tMPI_Implementation " + mpiCfg.MpiImplm + "\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\tMPI_Version " + mpiCfg.MpiVersion + "\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\tMPI_Version " + mpiCfg.MpiVersion + "\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\tApplication " + appName + "\n")
 	if err != nil {
 		return err
 	}
@@ -144,7 +183,14 @@ func generateOMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config)
 		return err
 	}
 
-	_, err = f.WriteString("\tcd /opt && wget " + app.url + " && tar -xzf " + app.tarball + " && cd " + app.dir + " && " + app.compileCmd + "\n")
+	// Get and compile the app
+	_, err = f.WriteString("\tcd /opt && wget " + app.url + " && tar -xzf " + app.tarball + " && cd " + app.dir + " && " + app.compileCmd + " && ")
+	if err != nil {
+		return err
+	}
+
+	// Clean up
+	_, err = f.WriteString("rm -rf /opt/" + app.tarball + " /tmp/ompi\n")
 	if err != nil {
 		return err
 	}
@@ -191,6 +237,10 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 		return fmt.Errorf("container MPI version is not defined")
 	}
 
+	// Load some generic data
+	sysCfg.Registery = kv.GetValue(kvs, "registery")
+
+	// Load the app configuration
 	var app appConfig
 	app.url = kv.GetValue(kvs, "app_url")
 	app.tarball = path.Base(app.url)
@@ -224,6 +274,13 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 
 		// todo: this should be part of hostMPI, not app
 		app.envScript = filepath.Join(kv.GetValue(kvs, "output_dir"), hostMPI.MpiImplm+"-"+hostMPI.MpiVersion+".env")
+
+		if !util.PathExists(kv.GetValue(kvs, "output_dir")) {
+			err := os.MkdirAll(kv.GetValue(kvs, "output_dir"), 0766)
+			if err != nil {
+				return fmt.Errorf("failed to create %s: %s", kv.GetValue(kvs, "output_dir"), err)
+			}
+		}
 
 		err = util.DirInit(hostMPI.BuildDir)
 		if err != nil {
@@ -279,6 +336,17 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 	}
 
 	// todo: Upload image if necessary
+	if sysCfg.Upload {
+		err = sy.Sign(containerMPI, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to sign image: %s", err)
+		}
+
+		err = sy.Upload(containerMPI, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to upload image: %s", err)
+		}
+	}
 
 	fmt.Printf("Container image path: %s\n", containerMPI.ContainerPath)
 	appPath := filepath.Join("/opt", app.dir, app.exe)

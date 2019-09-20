@@ -25,6 +25,19 @@ const (
 	FormatTAR = "tar"
 )
 
+func PathExists(path string) bool {
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+
+	if err == nil {
+		return true
+	}
+
+	return false
+}
+
 // FileExists is a utility function that checks whether a file exists or not.
 // If the file exits, FileExists return true; otherwise it returns false.
 func FileExists(path string) bool {
