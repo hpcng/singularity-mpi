@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 
@@ -26,7 +27,7 @@ type appConfig struct {
 	// tarball is the name of the tarball associated to the application
 	tarball string
 	// dir is the directory of the source code once the tarball is unpacked
-	dir string
+	//dir string
 	// compileCmd is the command used to compile the application
 	compileCmd string
 	// envScript is the path to the script that the user will be
@@ -95,102 +96,60 @@ func generateEnvFile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) err
 	return nil
 }
 
-func generateOMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) error {
+func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	f, err := os.Create(mpiCfg.DefFile)
 	if err != nil {
 		return fmt.Errorf("failed to create %s: %s", mpiCfg.DefFile, err)
 	}
 
-	ompitarball := path.Base(mpiCfg.URL)
-	tarballFormat := util.DetectTarballFormat(ompitarball)
-	tarArgs := util.GetTarArgs(tarballFormat)
-	linuxDistro := "ubuntu"    // todo: do not hardcode
-	appName := "NetPIPE-5.1.4" // todo: do not hardcode
+	deffileCfg := deffile.DefFileData{
+		Distro:     mpiCfg.Distro,
+		MpiImplm:   mpiCfg.MpiImplm,
+		MpiVersion: mpiCfg.MpiVersion,
+		MpiURL:     mpiCfg.URL,
+		//AppDir:     app.dir,
+	}
 
-	_, err = f.WriteString("Bootstrap: docker\nFrom: " + mpiCfg.Distro + "\n\n")
+	err = deffile.AddBootstrap(f, &deffileCfg)
 	if err != nil {
 		return err
 	}
 
-	// Add labels
-	_, err = f.WriteString("%labels\n")
+	err = deffile.AddLabels(f, &deffileCfg)
 	if err != nil {
 		return err
 	}
 
-	_, err = f.WriteString("\tLinux_distribution " + linuxDistro + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\tLinux_version " + mpiCfg.Distro + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\tMPI_Implementation " + mpiCfg.MpiImplm + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\tMPI_Version " + mpiCfg.MpiVersion + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\tMPI_Version " + mpiCfg.MpiVersion + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\tApplication " + appName + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("%environment\n\tOMPI_DIR=/opt/ompi-" + mpiCfg.MpiVersion + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\texport OMPI_DIR\n\texport SINGULARITY_OMPI_DIR=$OMPI_DIR\n\texport SINGULARITYENV_APPEND_PATH=$OMPI_DIR/bin\n\texport SINGULARITYENV_APPEND_LD_LIBRARY_PATH=$OMPI_DIR/lib\n\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("%post\n\tapt-get update && apt-get install -y wget git bash gcc gfortran g++ make file\n\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\texport OMPI_VERSION=" + mpiCfg.MpiVersion + "\n\texport OMPI_URL=\"" + mpiCfg.URL + "\"\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\texport OMPI_DIR=/opt/ompi\n\n\tmkdir -p /tmp/ompi\n\tmkdir -p /opt\n\tcd /tmp/ompi && wget $OMPI_URL && tar " + tarArgs + " " + ompitarball + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\tcd /tmp/ompi/openmpi-$OMPI_VERSION && ./configure --prefix=$OMPI_DIR && make -j8 install\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\texport PATH=$OMPI_DIR/bin:$PATH\n\texport LD_LIBRARY_PATH=$OMPI_DIR/lib:$LD_LIBRARY_PATH\n\texport MANPATH=$OMPI_DIR/share/man:$MANPATH\n\n")
+	err = deffile.AddMPIEnv(f, &deffileCfg)
 	if err != nil {
 		return err
 	}
 
 	// Get and compile the app
-	_, err = f.WriteString("\tcd /opt && wget " + app.url + " && tar -xzf " + app.tarball + " && cd " + app.dir + " && " + app.compileCmd + " && ")
+	_, err = f.WriteString("\tcd /opt && wget " + app.url + " && tar -xzf " + app.tarball + "\n")
+	if err != nil {
+		return err
+	}
+
+	// Download and unpack the app
+	_, err = f.WriteString("\tAPPDIR=`ls -l /opt | egrep '^d' | head -1 | awk '{print $9}'`\n")
+	if err != nil {
+		return err
+	}
+
+	err = deffile.AddMPIInstall(f, &deffileCfg)
+	if err != nil {
+		return err
+	}
+
+	// Compile the app
+	_, err = f.WriteString("\tcd /opt/$APPDIR && " + app.compileCmd + "\n")
 	if err != nil {
 		return err
 	}
 
 	// Clean up
-	_, err = f.WriteString("rm -rf /opt/" + app.tarball + " /tmp/ompi\n")
+	_, err = f.WriteString("\trm -rf /opt/" + app.tarball + " /tmp/ompi\n")
 	if err != nil {
 		return err
 	}
@@ -238,13 +197,12 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 	}
 
 	// Load some generic data
-	sysCfg.Registery = kv.GetValue(kvs, "registery")
+	sysCfg.Registery = kv.GetValue(kvs, "registery") + kv.GetValue(kvs, "app_name") + ".sif:latest"
 
 	// Load the app configuration
 	var app appConfig
 	app.url = kv.GetValue(kvs, "app_url")
 	app.tarball = path.Base(app.url)
-	app.dir = kv.GetValue(kvs, "app_dir")
 	app.exe = kv.GetValue(kvs, "app_exe")
 	app.compileCmd = kv.GetValue(kvs, "app_compile_cmd")
 	if app.url == "" {
@@ -252,9 +210,6 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 	}
 	if app.tarball == "" {
 		return fmt.Errorf("application's package is not defined")
-	}
-	if app.dir == "" {
-		return fmt.Errorf("application's directory is not defined")
 	}
 	if app.compileCmd == "" {
 		return fmt.Errorf("application's compilation command is not defined")
@@ -324,7 +279,7 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 	}
 
 	// Generate definition file
-	err = generateOMPIDeffile(&app, &containerMPI, sysCfg)
+	err = generateMPIDeffile(&app, &containerMPI, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to generate definition file %s: %s", containerMPI.DefFile, err)
 	}
@@ -349,8 +304,10 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 	}
 
 	fmt.Printf("Container image path: %s\n", containerMPI.ContainerPath)
-	appPath := filepath.Join("/opt", app.dir, app.exe)
-	fmt.Printf("Command example to execute your application with two MPI ranks: mpirun -np 2 singularity exec " + containerMPI.ContainerPath + " " + appPath + "\n")
+	/*
+		appPath := filepath.Join("/opt", app.dir, app.exe)
+		fmt.Printf("Command example to execute your application with two MPI ranks: mpirun -np 2 singularity exec " + containerMPI.ContainerPath + " " + appPath + "\n")
+	*/
 
 	return nil
 }

@@ -26,14 +26,6 @@ func Sign(mpiCfg mpi.Config, sysCfg *sys.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
 	defer cancel()
 
-	/*
-		printfBin, err := exec.LookPath("printf")
-		if err != nil {
-			return fmt.Errorf("printf binary not available: %s", err)
-		}
-	*/
-
-	//cmd := exec.CommandContext(ctx, printfBin, "$SY_KEY_PASSPHRASE", "|", sysCfg.SingularityBin, "sign", mpiCfg.ContainerPath)
 	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "sign", mpiCfg.ContainerPath)
 
 	stdin, err := cmd.StdinPipe()
