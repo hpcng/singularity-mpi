@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
@@ -197,7 +198,12 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 	}
 
 	// Load some generic data
-	sysCfg.Registery = kv.GetValue(kvs, "registery") + kv.GetValue(kvs, "app_name") + ".sif:latest"
+	curTime := time.Now()
+	url := kv.GetValue(kvs, "registery")
+	if string(url[len(url)-1]) != "/" {
+		url = url + "/"
+	}
+	sysCfg.Registery = url + kv.GetValue(kvs, "app_name") + ":" + curTime.Format("20060102")
 
 	// Load the app configuration
 	var app appConfig
@@ -292,6 +298,10 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 
 	// todo: Upload image if necessary
 	if sysCfg.Upload {
+		if os.Getenv(sy.KeyPassphrase) == "" {
+			log.Println("WARN: passphrase for key is not defined")
+		}
+
 		err = sy.Sign(containerMPI, sysCfg)
 		if err != nil {
 			return fmt.Errorf("failed to sign image: %s", err)
