@@ -68,11 +68,11 @@ func Sign(mpiCfg mpi.Config, sysCfg *sys.Config) error {
 func Upload(mpiCfg mpi.Config, sysCfg *sys.Config) error {
 	var stdout, stderr bytes.Buffer
 
-	log.Printf("-> Uploading container %s to %s", mpiCfg.ContainerPath, sysCfg.Registery)
+	log.Printf("-> Uploading container %s to %s", mpiCfg.ContainerPath, sysCfg.Registry)
 	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "push", mpiCfg.ContainerPath, sysCfg.Registery)
+	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "push", mpiCfg.ContainerPath, sysCfg.Registry)
 	cmd.Dir = mpiCfg.BuildDir
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

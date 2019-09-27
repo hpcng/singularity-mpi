@@ -42,8 +42,8 @@ type Config struct {
 	Nrun int
 	// AppContainizer is the path to the configuration for automatic containerization of app
 	AppContainizer string
-	// Register is the optinal user registery where images can be uploaded
-	Registery string
+	// Registry is the optinal user registery where images can be uploaded
+	Registry string
 	// Upload specifies whether images needs to be uploaded to the registery
 	Upload bool
 }

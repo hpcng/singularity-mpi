@@ -203,7 +203,7 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 	if string(url[len(url)-1]) != "/" {
 		url = url + "/"
 	}
-	sysCfg.Registery = url + kv.GetValue(kvs, "app_name") + ":" + curTime.Format("20060102")
+	sysCfg.Registry = url + kv.GetValue(kvs, "app_name") + ":" + curTime.Format("20060102")
 
 	// Load the app configuration
 	var app appConfig
