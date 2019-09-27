@@ -18,6 +18,7 @@ import (
 	"github.com/sylabs/singularity-mpi/pkg/containizer"
 
 	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
+	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -50,12 +51,12 @@ func getListExperiments(config *cfg.Config) []mpi.Experiment {
 	return experiments
 }
 
-func runExperiment(e mpi.Experiment, sysCfg *sys.Config) (results.Result, error) {
+func runExperiment(e mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (results.Result, error) {
 	var res results.Result
 	var err error
 
 	res.Experiment = e
-	res.Pass, res.Note, err = exp.Run(e, sysCfg)
+	res.Pass, res.Note, err = exp.Run(e, sysCfg, syConfig)
 	if err != nil {
 		return res, fmt.Errorf("failure during the execution of the experiment: %s", err)
 	}
@@ -63,7 +64,7 @@ func runExperiment(e mpi.Experiment, sysCfg *sys.Config) (results.Result, error)
 	return res, nil
 }
 
-func run(experiments []mpi.Experiment, sysCfg *sys.Config) []results.Result {
+func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) []results.Result {
 	var newResults []results.Result
 
 	/* Sanity checks */
@@ -85,7 +86,7 @@ func run(experiments []mpi.Experiment, sysCfg *sys.Config) []results.Result {
 		var i int
 		for i = 0; i < sysCfg.Nrun; i++ {
 			log.Printf("Running experiment %d/%d with host MPI %s and container MPI %s\n", i+1, sysCfg.Nrun, e.VersionHostMPI, e.VersionContainerMPI)
-			newRes, err := runExperiment(e, sysCfg)
+			newRes, err := runExperiment(e, sysCfg, syConfig)
 			if err != nil {
 				log.Fatalf("failure during the execution of experiment: %s", err)
 			}
@@ -133,7 +134,7 @@ func run(experiments []mpi.Experiment, sysCfg *sys.Config) []results.Result {
 	return newResults
 }
 
-func testMPI(mpiImplem string, experiments []mpi.Experiment, sysCfg sys.Config) error {
+func testMPI(mpiImplem string, experiments []mpi.Experiment, sysCfg sys.Config, syConfig sy.MPIToolConfig) error {
 	// If the user did not specify an output file, we try to implicitly
 	// set a relevant name
 	if sysCfg.OutputFile == "" {
@@ -170,7 +171,7 @@ func testMPI(mpiImplem string, experiments []mpi.Experiment, sysCfg sys.Config) 
 
 	// Run the experiments
 	if len(experimentsToRun) > 0 {
-		run(experimentsToRun, &sysCfg)
+		run(experimentsToRun, &sysCfg, &syConfig)
 	}
 
 	results.Analyse(mpiImplem)
@@ -225,6 +226,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("cannot parse %s: %s", sysCfg.ConfigFile, err)
 	}
+
+	// Make sure the tool's configuration file is set and load its data
+	toolConfigFile, err := sy.CreateMPIConfigFile()
+	if err != nil {
+		log.Fatalf("cannot setup configuration file: %s", err)
+	}
+	kvs, err := kv.LoadKeyValueConfig(toolConfigFile)
+	if err != nil {
+		log.Fatalf("cannot load the tool's configuration file (%s): %s", toolConfigFile, err)
+	}
+	var syConfig sy.MPIToolConfig
+	syConfig.BuildPrivilege, err = strconv.ParseBool(kv.GetValue(kvs, sy.BuildPrivilegeKey))
+	if err != nil {
+		log.Fatalf("failed to load the tool's configuration: %s", err)
+	}
+
 	// Figure out all the experiments that need to be executed
 	experiments := getListExperiments(config)
 	mpiImplem := exp.GetMPIImplemFromExperiments(experiments)
@@ -262,11 +279,6 @@ func main() {
 		log.Fatal("please netpipe or imb, not both")
 	}
 
-	_, err = sy.CreateMPIConfigFile()
-	if err != nil {
-		log.Fatalf("cannot setup configuration file: %s", err)
-	}
-
 	// Try to detect the local distro. If we cannot, it is not a big deal but we know that for example having
 	// different versions of Ubuntu in containers and host may lead to some libc problems
 	sysCfg.TargetUbuntuDistro = defaultUbuntuDistro // By default, containers will use a specific Ubuntu distro
@@ -284,7 +296,7 @@ func main() {
 			log.Fatalf("failed to create container for app: %s", err)
 		}
 	} else {
-		err := testMPI(mpiImplem, experiments, sysCfg)
+		err := testMPI(mpiImplem, experiments, sysCfg, syConfig)
 		if err != nil {
 			log.Fatalf("failed test MPI: %s", err)
 		}

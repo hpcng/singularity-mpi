@@ -18,6 +18,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
@@ -105,8 +108,66 @@ func saveErrorDetails(exp mpi.Experiment, sysCfg *sys.Config, res mpi.ExecResult
 	return nil
 }
 
+func pullContainerImage(myContainerMPICfg *mpi.Config, exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) error {
+	confFileName := myContainerMPICfg.MpiImplm + "-images.conf"
+	registryConfigFile := filepath.Join(sysCfg.EtcDir, confFileName)
+
+	kvs, err := kv.LoadKeyValueConfig(registryConfigFile)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration file related to registry: %s\n", err)
+	}
+	myContainerMPICfg.ImageURL = kv.GetValue(kvs, myContainerMPICfg.MpiVersion)
+
+	if myContainerMPICfg.ImageURL == "" {
+		return fmt.Errorf("failed to get image URL")
+	}
+
+	if sysCfg.SingularityBin == "" {
+		sysCfg.SingularityBin, err = exec.LookPath("singularity")
+		if err != nil {
+			return fmt.Errorf("failed to find Singularity binary: %s", err)
+		}
+	}
+
+	err = sy.Pull(myContainerMPICfg, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to pull image: %s", err)
+	}
+
+	getAppData(myContainerMPICfg, sysCfg)
+
+	log.Println("* Container MPI configuration *")
+	log.Println("-> Build container in", myContainerMPICfg.BuildDir)
+	log.Println("-> MPI implementation:", myContainerMPICfg.MpiImplm)
+	log.Println("-> MPI version:", myContainerMPICfg.MpiVersion)
+	log.Println("-> Image URL:", myContainerMPICfg.URL)
+
+	return nil
+}
+
+func createNewContainer(myContainerMPICfg *mpi.Config, exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) error {
+	/* CREATE THE CONTAINER MPI CONFIGURATION */
+	myContainerMPICfg.URL = exp.URLContainerMPI
+
+	log.Println("* Container MPI configuration *")
+	log.Println("-> Build container in", myContainerMPICfg.BuildDir)
+	log.Println("-> MPI implementation:", myContainerMPICfg.MpiImplm)
+	log.Println("-> MPI version:", myContainerMPICfg.MpiVersion)
+	log.Println("-> MPI URL:", myContainerMPICfg.URL)
+
+	/* CREATE THE MPI CONTAINER */
+
+	res := createMPIContainer(myContainerMPICfg, sysCfg)
+	if res.Err != nil {
+		_ = saveErrorDetails(exp, sysCfg, res)
+		return fmt.Errorf("failed to create container: %s", res.Err)
+	}
+
+	return nil
+}
+
 // Run configure, install and execute a given experiment
-func Run(exp mpi.Experiment, sysCfg *sys.Config) (bool, string, error) {
+func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, string, error) {
 	var myHostMPICfg mpi.Config
 	var myContainerMPICfg mpi.Config
 	var err error
@@ -138,27 +199,6 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config) (bool, string, error) {
 	log.Println("-> MPI version:", myHostMPICfg.MpiVersion)
 	log.Println("-> MPI URL:", myHostMPICfg.URL)
 
-	/* CREATE THE CONTAINER MPI CONFIGURATION */
-
-	// Create a temporary directory where the container will be built
-	myContainerMPICfg.BuildDir, err = ioutil.TempDir("", "mpi_container_"+exp.VersionContainerMPI+"-")
-	if err != nil {
-		return false, "", fmt.Errorf("failed to create directory to build container: %s", err)
-	}
-	defer os.RemoveAll(myContainerMPICfg.BuildDir)
-
-	myContainerMPICfg.MpiImplm = exp.MPIImplm
-	myContainerMPICfg.URL = exp.URLContainerMPI
-	myContainerMPICfg.MpiVersion = exp.VersionContainerMPI
-	myContainerMPICfg.ContainerName = "singularity_mpi.sif"
-	myContainerMPICfg.ContainerPath = filepath.Join(myContainerMPICfg.BuildDir, myContainerMPICfg.ContainerName)
-
-	log.Println("* Container MPI configuration *")
-	log.Println("-> Build container in", myContainerMPICfg.BuildDir)
-	log.Println("-> MPI implementation:", myContainerMPICfg.MpiImplm)
-	log.Println("-> MPI version:", myContainerMPICfg.MpiVersion)
-	log.Println("-> MPI URL:", myContainerMPICfg.URL)
-
 	/* INSTALL MPI ON THE HOST */
 
 	res := mpi.InstallHost(&myHostMPICfg, sysCfg)
@@ -173,12 +213,26 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config) (bool, string, error) {
 		}
 	}()
 
-	/* CREATE THE MPI CONTAINER */
-
-	res = createMPIContainer(&myContainerMPICfg, sysCfg)
-	if res.Err != nil {
-		_ = saveErrorDetails(exp, sysCfg, res)
-		return false, "", fmt.Errorf("failed to create container: %s", res.Err)
+	// Create a temporary directory where the container will be built
+	myContainerMPICfg.BuildDir, err = ioutil.TempDir("", "mpi_container_"+exp.VersionContainerMPI+"-")
+	if err != nil {
+		return false, "", fmt.Errorf("failed to create directory to build container: %s", err)
+	}
+	defer os.RemoveAll(myContainerMPICfg.BuildDir)
+	myContainerMPICfg.ContainerName = "singularity_mpi.sif"
+	myContainerMPICfg.ContainerPath = filepath.Join(myContainerMPICfg.BuildDir, myContainerMPICfg.ContainerName)
+	myContainerMPICfg.MpiImplm = exp.MPIImplm
+	myContainerMPICfg.MpiVersion = exp.VersionContainerMPI
+	if syConfig.BuildPrivilege {
+		err = createNewContainer(&myContainerMPICfg, exp, sysCfg, syConfig)
+		if err != nil {
+			return false, "", fmt.Errorf("failed to create container: %s", err)
+		}
+	} else {
+		err = pullContainerImage(&myContainerMPICfg, exp, sysCfg, syConfig)
+		if err != nil {
+			return false, "", fmt.Errorf("failed to pull container: %s", err)
+		}
 	}
 
 	/* PREPARE THE COMMAND TO RUN THE ACTUAL TEST */
@@ -243,12 +297,7 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config) (bool, string, error) {
 	return true, note, nil
 }
 
-func createContainerImage(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
-	err := mpi.CreateContainer(mpiCfg, sysCfg)
-	if err != nil {
-		return fmt.Errorf("failed to create container image: %s", err)
-	}
-
+func getAppData(mpiCfg *mpi.Config, sysCfg *sys.Config) {
 	mpiCfg.TestPath = filepath.Join("/", "opt", "mpitest")
 	if sysCfg.NetPipe {
 		mpiCfg.TestPath = filepath.Join("/", "opt", "NetPIPE-5.1.4", "NPmpi")
@@ -256,6 +305,15 @@ func createContainerImage(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	if sysCfg.IMB {
 		mpiCfg.TestPath = filepath.Join("/", "opt", "mpi-benchmarks", "IMB-MPI1")
 	}
+}
+
+func createContainerImage(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
+	err := mpi.CreateContainer(mpiCfg, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create container image: %s", err)
+	}
+
+	getAppData(mpiCfg, sysCfg)
 
 	return nil
 }

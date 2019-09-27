@@ -52,6 +52,8 @@ type Config struct {
 	TestPath string
 	// Distro is the ID of the Linux distro to use in the container
 	Distro string
+	// ImageURL is the URL to use to pull an image
+	ImageURL string
 
 	//	m4SrcPath       string // Path to the m4 tarball
 	//	autoconfSrcPath string // Path to the autoconf tarball

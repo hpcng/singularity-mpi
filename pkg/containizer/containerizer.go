@@ -302,12 +302,12 @@ func ContainerizeApp(sysCfg *sys.Config) error {
 			log.Println("WARN: passphrase for key is not defined")
 		}
 
-		err = sy.Sign(containerMPI, sysCfg)
+		err = sy.Sign(&containerMPI, sysCfg)
 		if err != nil {
 			return fmt.Errorf("failed to sign image: %s", err)
 		}
 
-		err = sy.Upload(containerMPI, sysCfg)
+		err = sy.Upload(&containerMPI, sysCfg)
 		if err != nil {
 			return fmt.Errorf("failed to upload image: %s", err)
 		}

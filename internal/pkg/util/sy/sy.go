@@ -25,10 +25,15 @@ import (
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
-type SyMPIConfig struct {
+type MPIToolConfig struct {
 	// BuildPrivilege specifies whether or not we can build images on the platform
 	BuildPrivilege bool
 }
+
+const (
+	// BuildPrivilegeKey is the key used in the tool's configuration file to specify if the tool can create images on the platform
+	BuildPrivilegeKey = "build_privilege"
+)
 
 const (
 	// KeyPassphrase is the name of the environment variable used to specify the passphrase of the key to be used to sign images
@@ -38,7 +43,31 @@ const (
 	KeyIndex = "SY_KEY_INDEX"
 )
 
-func Sign(mpiCfg mpi.Config, sysCfg *sys.Config) error {
+func Pull(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
+	var stdout, stderr bytes.Buffer
+
+	if sysCfg.SingularityBin == "" || mpiCfg.ContainerPath == "" || mpiCfg.ImageURL == "" || mpiCfg.BuildDir == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	log.Printf("-> Pulling image: %s pull %s %s", sysCfg.SingularityBin, mpiCfg.ContainerPath, mpiCfg.ImageURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "pull", mpiCfg.ContainerPath, mpiCfg.ImageURL)
+	cmd.Dir = mpiCfg.BuildDir
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
+	}
+
+	return nil
+}
+
+func Sign(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	var stdout, stderr bytes.Buffer
 
 	log.Printf("-> Signing container (%s)", mpiCfg.ContainerPath)
@@ -76,7 +105,7 @@ func Sign(mpiCfg mpi.Config, sysCfg *sys.Config) error {
 	return nil
 }
 
-func Upload(mpiCfg mpi.Config, sysCfg *sys.Config) error {
+func Upload(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	var stdout, stderr bytes.Buffer
 
 	log.Printf("-> Uploading container %s to %s", mpiCfg.ContainerPath, sysCfg.Registry)
@@ -100,11 +129,11 @@ func getPathToSyMPIConfigFile() string {
 }
 
 func initMPIConfigFile(path string) error {
-	buildPrivilegeEntry := "build_privilege = true"
+	buildPrivilegeEntry := BuildPrivilegeKey + " = true"
 	err := checker.CheckBuildPrivilege()
 	if err != nil {
 		log.Printf("* [INFO] Cannot build singularity images: %s", err)
-		buildPrivilegeEntry = "build_privilege = false"
+		buildPrivilegeEntry = BuildPrivilegeKey + " = false"
 	}
 
 	data := []byte(buildPrivilegeEntry + "\n")

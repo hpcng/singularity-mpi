@@ -134,7 +134,7 @@ func CheckBuildPrivilege() error {
 	// Try to run the Singularity command
 	testImg := filepath.Join(dir, "test.sif")
 	log.Printf("* Trying to create image with: sudo singularity build %s %s\n", testImg, dummyDefFile)
-	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute) // We try only for one minute
 	defer cancel()
 	singularityCmd := exec.CommandContext(ctx, binPath, "singularity", "build", testImg, dummyDefFile)
 	singularityCmd.Dir = dir
