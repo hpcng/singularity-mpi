@@ -218,6 +218,8 @@ func main() {
 	sysCfg.Nrun = *nRun
 	sysCfg.AppContainizer = *appContainizer
 	sysCfg.Upload = *upload
+	sysCfg.Verbose = *verbose
+	sysCfg.Debug = *debug
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
@@ -231,9 +233,8 @@ func main() {
 	sysCfg.ScratchDir = filepath.Join(sysCfg.BinPath, scratchPath)
 
 	// Save the options passed in through the command flags
-	if *debug {
-		*verbose = true
-		sysCfg.Debug = *debug
+	if sysCfg.Debug {
+		sysCfg.Verbose = true
 		// If the scratch dir exists, we delete it to start fresh
 		err := util.DirInit(sysCfg.ScratchDir)
 		if err != nil {
@@ -245,10 +246,19 @@ func main() {
 			log.Fatalf("the system is not correctly setup: %s", err)
 		}
 	}
-	if !*verbose {
+
+	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
+	logFile := util.OpenLogFile(mpiImplem)
+	defer logFile.Close()
+	if sysCfg.Verbose {
+		nultiWriters := io.MultiWriter(os.Stdout, logFile)
+		log.SetOutput(nultiWriters)
+	} else {
 		log.SetOutput(ioutil.Discard)
 	}
-	if *imb && *netpipe {
+
+	// Sanity checks
+	if sysCfg.IMB && sysCfg.NetPipe {
 		log.Fatal("please netpipe or imb, not both")
 	}
 
@@ -267,16 +277,7 @@ func main() {
 		sysCfg.TargetUbuntuDistro = distro
 	}
 
-	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
-	logFile := util.OpenLogFile(mpiImplem)
-	defer logFile.Close()
-	if *verbose {
-		nultiWriters := io.MultiWriter(os.Stdout, logFile)
-		log.SetOutput(nultiWriters)
-	} else {
-		log.SetOutput(logFile)
-	}
-
+	// Run the requested tool capability
 	if sysCfg.AppContainizer != "" {
 		err := containizer.ContainerizeApp(&sysCfg)
 		if err != nil {

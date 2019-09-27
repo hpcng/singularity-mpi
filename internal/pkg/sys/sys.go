@@ -36,6 +36,8 @@ type Config struct {
 	OfiCfgFile string
 	// Ifnet is the network interface to use (e.g., required to setup OFI)
 	Ifnet string
+	// Verbose mode is active/inactive
+	Verbose bool
 	// Debug mode is active/inactive
 	Debug bool
 	// Nrun specifies the number of iterations, i.e., number of times the test is executed
