@@ -10,14 +10,25 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
+	"github.com/sylabs/singularity/pkg/syfs"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
+
+type SyMPIConfig struct {
+	// BuildPrivilege specifies whether or not we can build images on the platform
+	BuildPrivilege bool
+}
 
 const (
 	// KeyPassphrase is the name of the environment variable used to specify the passphrase of the key to be used to sign images
@@ -82,4 +93,45 @@ func Upload(mpiCfg mpi.Config, sysCfg *sys.Config) error {
 	}
 
 	return nil
+}
+
+func getPathToSyMPIConfigFile() string {
+	return filepath.Join(syfs.ConfigDir(), "singularity-mpi.conf")
+}
+
+func initMPIConfigFile(path string) error {
+	buildPrivilegeEntry := "build_privilege = true"
+	err := checker.CheckBuildPrivilege()
+	if err != nil {
+		log.Printf("* [INFO] Cannot build singularity images: %s", err)
+		buildPrivilegeEntry = "build_privilege = false"
+	}
+
+	data := []byte(buildPrivilegeEntry + "\n")
+
+	err = ioutil.WriteFile(path, data, 0644)
+	if err != nil {
+		return fmt.Errorf("Impossible to create configuration file %s :%s", path, err)
+	}
+
+	return nil
+}
+
+// CreateMPIConfigFile ensures that the configuration file of the tool is correctly created
+func CreateMPIConfigFile() (string, error) {
+	syDir := syfs.ConfigDir()
+	if !util.PathExists(syDir) {
+		return "", fmt.Errorf("%s does not exist. Is Singularity installed?", syDir)
+	}
+
+	syMPIConfigFile := getPathToSyMPIConfigFile()
+	log.Printf("-> Creating MPI configuration file: %s", syMPIConfigFile)
+	if !util.PathExists(syMPIConfigFile) {
+		err := initMPIConfigFile(syMPIConfigFile)
+		if err != nil {
+			return "", fmt.Errorf("failed to initialize MPI configuration file: %s", err)
+		}
+	}
+
+	return syMPIConfigFile, nil
 }

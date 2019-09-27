@@ -25,6 +25,7 @@ import (
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
+	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 )
 
 const (
@@ -249,6 +250,11 @@ func main() {
 	}
 	if *imb && *netpipe {
 		log.Fatal("please netpipe or imb, not both")
+	}
+
+	_, err = sy.CreateMPIConfigFile()
+	if err != nil {
+		log.Fatalf("cannot setup configuration file: %s", err)
 	}
 
 	// Try to detect the local distro. If we cannot, it is not a big deal but we know that for example having

@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -102,6 +103,44 @@ func CheckSystemConfig() error {
 	err = checkPrereqBinaries()
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// CheckBuildPrivilege checks if we can build an image for a definition file on the system
+func CheckBuildPrivilege() error {
+	binPath, err := exec.LookPath("sudo")
+	if err != nil {
+		return fmt.Errorf("failed to find sudo: %s", err)
+	}
+
+	// Now we try to build a very simple image
+	dir, err := ioutil.TempDir("", "")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary directory: %s", err)
+	}
+	defer os.RemoveAll(dir)
+
+	// Create a dummy def file
+	dummyDefFile := filepath.Join(dir, "test.def")
+	defFileContent := []byte("Bootstrap: docker\nFrom: alpine")
+	// The file is deteled when the temporary directory is deleted
+	err = ioutil.WriteFile(dummyDefFile, defFileContent, 0644)
+	if err != nil {
+		return fmt.Errorf("Impossible to create definition file: %s", err)
+	}
+
+	// Try to run the Singularity command
+	testImg := filepath.Join(dir, "test.sif")
+	log.Printf("* Trying to create image with: sudo singularity build %s %s\n", testImg, dummyDefFile)
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout*time.Minute)
+	defer cancel()
+	singularityCmd := exec.CommandContext(ctx, binPath, "singularity", "build", testImg, dummyDefFile)
+	singularityCmd.Dir = dir
+	err = singularityCmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to build test image: %s", err)
 	}
 
 	return nil
