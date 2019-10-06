@@ -6,7 +6,6 @@
 package experiments
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -16,9 +15,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
@@ -52,24 +50,6 @@ func GetMPIImplemFromExperiments(experiments []mpi.Experiment) string {
 	}
 
 	return experiments[0].MPIImplm
-}
-
-func getEnvPath(mpiCfg *mpi.Config) string {
-	// Intel MPI is installing the binaries and libraries in a quite complex setup
-	if mpiCfg.MpiImplm == "intel" {
-		return filepath.Join(mpiCfg.InstallDir, mpi.IntelInstallPathPrefix, "bin") + ":" + os.Getenv("PATH")
-	}
-
-	return filepath.Join(mpiCfg.InstallDir, "bin") + ":" + os.Getenv("PATH")
-}
-
-func getEnvLDPath(mpiCfg *mpi.Config) string {
-	// Intel MPI is installing the binaries and libraries in a quite complex setup
-	if mpiCfg.MpiImplm == "intel" {
-		return filepath.Join(mpiCfg.InstallDir, mpi.IntelInstallPathPrefix, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
-	}
-
-	return filepath.Join(mpiCfg.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 }
 
 func saveErrorDetails(exp mpi.Experiment, sysCfg *sys.Config, res mpi.ExecResult) error {
@@ -109,27 +89,24 @@ func saveErrorDetails(exp mpi.Experiment, sysCfg *sys.Config, res mpi.ExecResult
 }
 
 func pullContainerImage(myContainerMPICfg *mpi.Config, exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) error {
-	confFileName := myContainerMPICfg.MpiImplm + "-images.conf"
-	registryConfigFile := filepath.Join(sysCfg.EtcDir, confFileName)
-
-	kvs, err := kv.LoadKeyValueConfig(registryConfigFile)
-	if err != nil {
-		return fmt.Errorf("failed to load configuration file related to registry: %s\n", err)
+	// Sanity checks
+	if myContainerMPICfg.URL == "" {
+		return fmt.Errorf("undefined image URL")
 	}
-	myContainerMPICfg.ImageURL = kv.GetValue(kvs, myContainerMPICfg.MpiVersion)
 
 	if myContainerMPICfg.ImageURL == "" {
-		return fmt.Errorf("failed to get image URL")
+		return fmt.Errorf("undefined image URL")
 	}
 
 	if sysCfg.SingularityBin == "" {
+		var err error
 		sysCfg.SingularityBin, err = exec.LookPath("singularity")
 		if err != nil {
 			return fmt.Errorf("failed to find Singularity binary: %s", err)
 		}
 	}
 
-	err = sy.Pull(myContainerMPICfg, sysCfg)
+	err := sy.Pull(myContainerMPICfg, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to pull image: %s", err)
 	}
@@ -147,13 +124,10 @@ func pullContainerImage(myContainerMPICfg *mpi.Config, exp mpi.Experiment, sysCf
 
 func createNewContainer(myContainerMPICfg *mpi.Config, exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) error {
 	/* CREATE THE CONTAINER MPI CONFIGURATION */
-	myContainerMPICfg.URL = exp.URLContainerMPI
-
-	log.Println("* Container MPI configuration *")
-	log.Println("-> Build container in", myContainerMPICfg.BuildDir)
-	log.Println("-> MPI implementation:", myContainerMPICfg.MpiImplm)
-	log.Println("-> MPI version:", myContainerMPICfg.MpiVersion)
-	log.Println("-> MPI URL:", myContainerMPICfg.URL)
+	if sysCfg.Persistent != "" && util.FileExists(myContainerMPICfg.ContainerPath) {
+		log.Printf("* %s already exists, skipping...\n", myContainerMPICfg.ContainerPath)
+		return nil
+	}
 
 	/* CREATE THE MPI CONTAINER */
 
@@ -181,12 +155,17 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 	}
 	defer os.RemoveAll(myHostMPICfg.BuildDir)
 
-	// Create a temporary directory where to install MPI
-	myHostMPICfg.InstallDir, err = ioutil.TempDir("", "mpi_install_"+exp.VersionHostMPI+"-")
-	if err != nil {
-		return false, "", fmt.Errorf("failed to create install directory: %s", err)
+	hostInstallDirPrefix := "mpi_install_" + exp.VersionHostMPI
+	if sysCfg.Persistent == "" {
+		// Create a temporary directory where to install MPI
+		myHostMPICfg.InstallDir, err = ioutil.TempDir("", hostInstallDirPrefix+"-")
+		if err != nil {
+			return false, "", fmt.Errorf("failed to create install directory: %s", err)
+		}
+		defer os.RemoveAll(myHostMPICfg.InstallDir)
+	} else {
+		myHostMPICfg.InstallDir = filepath.Join(sysCfg.Persistent, "mpi_install_"+exp.VersionHostMPI)
 	}
-	defer os.RemoveAll(myHostMPICfg.InstallDir)
 
 	myHostMPICfg.MpiImplm = exp.MPIImplm
 	myHostMPICfg.URL = exp.URLHostMPI
@@ -206,23 +185,44 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 		_ = saveErrorDetails(exp, sysCfg, res)
 		return false, "", fmt.Errorf("failed to install host MPI: %s", res.Err)
 	}
-	defer func() {
-		res = mpi.UninstallHost(&myHostMPICfg, sysCfg)
-		if res.Err != nil {
-			log.Fatal(err)
-		}
-	}()
+	if sysCfg.Persistent != "" {
+		defer func() {
+			res = mpi.UninstallHost(&myHostMPICfg, sysCfg)
+			if res.Err != nil {
+				log.Fatal(err)
+			}
+		}()
+	}
 
 	// Create a temporary directory where the container will be built
-	myContainerMPICfg.BuildDir, err = ioutil.TempDir("", "mpi_container_"+exp.VersionContainerMPI+"-")
-	if err != nil {
-		return false, "", fmt.Errorf("failed to create directory to build container: %s", err)
+	myContainerMPICfg.URL = exp.URLContainerMPI
+	log.Println("* Container MPI configuration *")
+	log.Println("-> Build container in", myContainerMPICfg.BuildDir)
+	log.Println("-> MPI implementation:", myContainerMPICfg.MpiImplm)
+	log.Println("-> MPI version:", myContainerMPICfg.MpiVersion)
+	log.Println("-> MPI URL:", myContainerMPICfg.URL)
+	containerInstallDir := "mpi_container_" + exp.VersionContainerMPI
+	if sysCfg.Persistent == "" {
+		myContainerMPICfg.BuildDir, err = ioutil.TempDir("", containerInstallDir+"-")
+		if err != nil {
+			return false, "", fmt.Errorf("failed to create directory to build container: %s", err)
+		}
+		defer os.RemoveAll(myContainerMPICfg.BuildDir)
+	} else {
+		myContainerMPICfg.BuildDir = filepath.Join(sysCfg.Persistent, containerInstallDir)
+		myContainerMPICfg.InstallDir = myContainerMPICfg.BuildDir
+		if !util.PathExists(myContainerMPICfg.BuildDir) {
+			err := os.MkdirAll(myContainerMPICfg.BuildDir, 0755)
+			if err != nil {
+				return false, "", fmt.Errorf("failed to create %s: %s", myContainerMPICfg.BuildDir, err)
+			}
+		}
 	}
-	defer os.RemoveAll(myContainerMPICfg.BuildDir)
 	myContainerMPICfg.ContainerName = "singularity_mpi.sif"
 	myContainerMPICfg.ContainerPath = filepath.Join(myContainerMPICfg.BuildDir, myContainerMPICfg.ContainerName)
 	myContainerMPICfg.MpiImplm = exp.MPIImplm
 	myContainerMPICfg.MpiVersion = exp.VersionContainerMPI
+	myContainerMPICfg.ImageURL = sy.GetImageURL(&myContainerMPICfg, sysCfg)
 	if syConfig.BuildPrivilege {
 		err = createNewContainer(&myContainerMPICfg, exp, sysCfg, syConfig)
 		if err != nil {
@@ -238,56 +238,60 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 	/* PREPARE THE COMMAND TO RUN THE ACTUAL TEST */
 
 	log.Println("Running Test(s)...")
-	// We only let the mpirun command run for 10 minutes max
-	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*time.Minute)
-	defer cancel()
 
 	// Regex to catch errors where mpirun returns 0 but is known to have failed because displaying the help message
 	var re = regexp.MustCompile(`^(\n?)Usage:`)
 
-	var stdout, stderr bytes.Buffer
-	newPath := getEnvPath(&myHostMPICfg)
-	newLDPath := getEnvLDPath(&myHostMPICfg)
+	/*
+		mpirunBin := mpi.GetPathToMpirun(&myHostMPICfg)
 
-	mpirunBin := mpi.GetPathToMpirun(&myHostMPICfg)
+		// We have to be careful: if we leave an empty argument in the slice, it may lead to a mpirun failure.
+		var mpiCmd *exec.Cmd
+		// We really do not want to do this but MPICH is being picky about args so for now, it will do the job.
+		if myHostMPICfg.MpiImplm == "intel" {
+			extraArgs := mpi.GetExtraMpirunArgs(&myHostMPICfg)
 
-	// We have to be careful: if we leave an empty argument in the slice, it may lead to a mpirun failure.
-	var mpiCmd *exec.Cmd
-	// We really do not want to do this but MPICH is being picky about args so for now, it will do the job.
-	if myHostMPICfg.MpiImplm == "intel" {
-		extraArgs := mpi.GetExtraMpirunArgs(&myHostMPICfg)
-
-		args := []string{"-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath}
-		if len(extraArgs) > 0 {
-			args = append(extraArgs, args...)
+			args := []string{"-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath}
+			if len(extraArgs) > 0 {
+				args = append(extraArgs, args...)
+			}
+			mpiCmd = exec.CommandContext(ctx, mpirunBin, args...)
+			log.Printf("-> Running: %s %s", mpirunBin, strings.Join(args, " "))
+		} else {
+			mpiCmd = exec.CommandContext(ctx, mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath)
+			log.Printf("-> Running: %s %s", mpirunBin, strings.Join([]string{"-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath}, " "))
 		}
-		mpiCmd = exec.CommandContext(ctx, mpirunBin, args...)
-		log.Printf("-> Running: %s %s", mpirunBin, strings.Join(args, " "))
-	} else {
-		mpiCmd = exec.CommandContext(ctx, mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath)
-		log.Printf("-> Running: %s %s", mpirunBin, strings.Join([]string{"-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath}, " "))
+	*/
+
+	// mpiJob describes the job
+	var mpiJob jm.Job
+	mpiJob.HostCfg = &myHostMPICfg
+	mpiJob.ContainerCfg = &myContainerMPICfg
+	mpiJob.AppBin = myContainerMPICfg.TestPath
+	mpiJob.NNodes = 2
+	mpiJob.NP = 2
+
+	// We submit the job
+	submitCmd, err := jm.PrepareLaunchCmd(&mpiJob, sysCfg)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to prepare the launch command: %s", err)
 	}
-	mpiCmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
-	mpiCmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
-	mpiCmd.Stdout = &stdout
-	mpiCmd.Stderr = &stderr
-	log.Printf("-> PATH=%s", newPath)
-	log.Printf("-> LD_LIBRARY_PATH=%s\n", newLDPath)
-	err = mpiCmd.Run()
-	if err != nil || ctx.Err() == context.DeadlineExceeded || re.Match(stdout.Bytes()) {
-		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
+	defer submitCmd.CancelFn()
+	err = submitCmd.Cmd.Run()
+	if err != nil || submitCmd.Ctx.Err() == context.DeadlineExceeded || re.Match(submitCmd.Stdout.Bytes()) {
+		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", submitCmd.Stdout.String(), submitCmd.Stderr.String(), err)
 		var res mpi.ExecResult
 		res.Err = err
-		res.Stderr = stderr.String()
-		res.Stdout = stdout.String()
+		res.Stderr = submitCmd.Stderr.String()
+		res.Stdout = submitCmd.Stdout.String()
 		err = saveErrorDetails(exp, sysCfg, res)
 		return false, "", err
 	}
 
-	log.Printf("Successful run - stdout: %s; stderr: %s\n", stdout.String(), stderr.String())
+	log.Printf("Successful run - stdout: %s; stderr: %s\n", submitCmd.Stdout.String(), submitCmd.Stderr.String())
 
 	log.Println("Handling data...")
-	note, err := postExecutionDataMgt(exp, sysCfg, stdout.String())
+	note, err := postExecutionDataMgt(exp, sysCfg, submitCmd.Stdout.String())
 	if err != nil {
 		return true, "", fmt.Errorf("failed to handle data: %s", err)
 	}

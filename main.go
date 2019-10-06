@@ -209,6 +209,7 @@ func main() {
 	nRun := flag.Int("n", 1, "Number of iterations")
 	appContainizer := flag.String("app-containizer", "", "Path to the configuration file for automatically containerization an application")
 	upload := flag.Bool("upload", false, "Upload generated images (appropriate configuration files need to specify the registry's URL")
+	persistent := flag.String("persistent-installs", "", "Keep the MPI installations on the host and the container images in the specified directory (instead of deleting everything once an experiment terminates)")
 
 	flag.Parse()
 
@@ -221,6 +222,7 @@ func main() {
 	sysCfg.Upload = *upload
 	sysCfg.Verbose = *verbose
 	sysCfg.Debug = *debug
+	sysCfg.Persistent = *persistent
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
@@ -240,6 +242,12 @@ func main() {
 	syConfig.BuildPrivilege, err = strconv.ParseBool(kv.GetValue(kvs, sy.BuildPrivilegeKey))
 	if err != nil {
 		log.Fatalf("failed to load the tool's configuration: %s", err)
+	}
+
+	// Load more system configuration details from the singularity-mpi.conf file
+	sysCfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, sys.SlurmEnabledKey))
+	if err != nil {
+		log.Fatalf("failed to load the Slurm configuration: %s", err)
 	}
 
 	// Figure out all the experiments that need to be executed

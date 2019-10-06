@@ -16,7 +16,17 @@ Finally, check-out the source code: `cd $HOME/go/src/github.com/sylabs && git cl
 
 # Preparation of the host system
 
-## sudo configuration
+Two mode of operations are currently supported:
+- building the container images on the host, guaranteeing the latest version of the operating system used by the containers,
+- using pre-made images from our registry, in case images cannot be built on the host.
+
+## Using images from registry
+
+Import the key used to signed the images: singularity key pull C7A1FB785121CB91D0965FB1CC509D21C10CC11D
+
+## Locally building images
+
+###sudo configuration
 
 The tool relies heavily on the `singularity` command line for the creation of images. That command is invoked with `sudo`, virtually requiring users to enter their password for every single experiment the tool is executing. When considering that the tool may run dozens of experiments over several hours, having to enter a password for every image creation is quickly cumbersome and potentially a source of unexpected failres. It is therefore strongly encouraged to setup `sudo` so that a password is not requested when executing `singularity` commands. To do so, update your `sudo` configuration as follow:
 

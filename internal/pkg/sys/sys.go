@@ -48,9 +48,16 @@ type Config struct {
 	Registry string
 	// Upload specifies whether images needs to be uploaded to the registery
 	Upload bool
+	// SlurmEnabled specifies whether we use slurm to start MPI jobs
+	SlurmEnabled bool
+	// Persistent specifies whether we need to keep the installed software (MPI and containers)
+	Persistent string
 }
 
 const (
 	// CmdTimetout is the maximum time we allow a command to run
 	CmdTimeout = 10
+
+	// SlurmEnabledKey is the key used in the singularity-mpi.conf file to specify if Slurm shall be used
+	SlurmEnabledKey = "enable_slurm"
 )
