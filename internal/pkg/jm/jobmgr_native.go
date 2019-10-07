@@ -44,6 +44,14 @@ func getEnvLDPath(mpiCfg *mpi.Config) string {
 	return filepath.Join(mpiCfg.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 }
 
+func NativeGetOutput(j *Job, sysCfg *sys.Config) string {
+	return j.OutBuffer.String()
+}
+
+func NativeGetError(j *Job, sysCfg *sys.Config) string {
+	return j.ErrBuffer.String()
+}
+
 func NativeSubmit(j *Job, sysCfg *sys.Config) (Launcher, error) {
 	var l Launcher
 
@@ -71,6 +79,9 @@ func NativeSubmit(j *Job, sysCfg *sys.Config) (Launcher, error) {
 	log.Printf("Using %s as LD_LIBRARY_PATH\n", newLDPath)
 	l.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
 	l.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
+
+	j.GetOutput = NativeGetOutput
+	j.GetError = NativeGetError
 
 	return l, nil
 }

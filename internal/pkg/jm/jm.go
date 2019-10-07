@@ -6,6 +6,7 @@
 package jm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -66,19 +67,22 @@ type Job struct {
 
 	// AppBin is the path to the application's binary, i.e., the binary to start
 	AppBin string
+
+	// OutBuffer is a buffer with the output of the job
+	OutBuffer bytes.Buffer
+
+	// ErrBuffer is a buffer with the stderr of the job
+	ErrBuffer bytes.Buffer
+
+	GetOutput GetOutputFn
+
+	GetError GetErrorFn
 }
 
 // Loader checks whether a giv job manager is applicable or not
 type Loader interface {
 	Load() bool
 }
-
-/*
-// Starter is responsible for starting a job
-type Starter interface {
-	Start(*JM) error
-}
-*/
 
 // launcher represents the details to start a jon
 type Launcher struct {
@@ -94,6 +98,10 @@ type GetConfigFn func() error
 type SubmitFn func(*Job, *sys.Config) (Launcher, error)
 
 type CleanUpFn func(...interface{}) error
+
+type GetOutputFn func(*Job, *sys.Config) string
+
+type GetErrorFn func(*Job, *sys.Config) string
 
 // JM is the structure representing a specific JM
 type JM struct {
@@ -169,6 +177,8 @@ func PrepareLaunchCmd(job *Job, sysCfg *sys.Config) (SubmitCmd, error) {
 
 	cmd.Ctx, cmd.CancelFn = context.WithTimeout(context.Background(), sys.CmdTimeout*time.Minute)
 	cmd.Cmd = exec.CommandContext(cmd.Ctx, launcher.Cmd, launcher.CmdArgs...)
+	cmd.Cmd.Stdout = &job.OutBuffer
+	cmd.Cmd.Stderr = &job.ErrBuffer
 
 	return cmd, nil
 }

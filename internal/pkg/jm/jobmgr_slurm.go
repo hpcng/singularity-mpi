@@ -45,6 +45,26 @@ func LoadSlurm() (bool, JM) {
 	return true, jm
 }
 
+func SlurmGetOutput(j *Job, sysCfg *sys.Config) string {
+	outputFile := getJobOutputFilePath(j, sysCfg)
+	output, err := ioutil.ReadFile(outputFile)
+	if err != nil {
+		return ""
+	}
+
+	return string(output)
+}
+
+func SlurmGetError(j *Job, sysCfg *sys.Config) string {
+	errorFile := getJobErrorFilePath(j, sysCfg)
+	errorTxt, err := ioutil.ReadFile(errorFile)
+	if err != nil {
+		return ""
+	}
+
+	return string(errorTxt)
+}
+
 func SlurmGetConfig() error {
 	return nil
 }
@@ -63,6 +83,16 @@ func SlurmSetConfig() error {
 const (
 	slurmScriptCmdPrefix = "#SBATCH"
 )
+
+func getJobOutputFilePath(j *Job, sysCfg *sys.Config) string {
+	errorFilename := j.ContainerCfg.ContainerName + ".out"
+	return filepath.Join(sysCfg.ScratchDir, errorFilename)
+}
+
+func getJobErrorFilePath(j *Job, sysCfg *sys.Config) string {
+	outputFilename := j.ContainerCfg.ContainerName + ".err"
+	return filepath.Join(sysCfg.ScratchDir, outputFilename)
+}
 
 func generateJobScript(j *Job, sysCfg *sys.Config, kvs []kv.KV) error {
 	// Sanity checks
@@ -111,10 +141,8 @@ func generateJobScript(j *Job, sysCfg *sys.Config, kvs []kv.KV) error {
 		scriptText += slurmScriptCmdPrefix + " --ntasks=" + strconv.FormatInt(j.NP, 10) + "\n"
 	}
 
-	errorFilename := j.ContainerCfg.ContainerName + ".err"
-	scriptText += slurmScriptCmdPrefix + " --error=" + filepath.Join(sysCfg.ScratchDir, errorFilename) + "\n"
-	outputFilename := j.ContainerCfg.ContainerName + ".out"
-	scriptText += slurmScriptCmdPrefix + " --output=" + filepath.Join(sysCfg.ScratchDir, outputFilename) + "\n"
+	scriptText += slurmScriptCmdPrefix + " --error=" + getJobErrorFilePath(j, sysCfg) + "\n"
+	scriptText += slurmScriptCmdPrefix + " --output=" + getJobOutputFilePath(j, sysCfg) + "\n"
 
 	// Set PATH and LD_LIBRARY_PATH
 	scriptText += "\nexport PATH=" + j.HostCfg.InstallDir + "/bin:$PATH\n"
@@ -159,6 +187,9 @@ func SlurmSubmit(j *Job, sysCfg *sys.Config) (Launcher, error) {
 		return l, fmt.Errorf("unable to generate Slurm script: %s", err)
 	}
 	l.CmdArgs = append(l.CmdArgs, j.BatchScript)
+
+	j.GetOutput = SlurmGetOutput
+	j.GetError = SlurmGetError
 
 	return l, nil
 }

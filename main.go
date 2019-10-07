@@ -52,16 +52,16 @@ func getListExperiments(config *cfg.Config) []mpi.Experiment {
 }
 
 func runExperiment(e mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (results.Result, error) {
-	var res results.Result
-	var err error
+	var expRes results.Result
+	var execRes mpi.ExecResult
 
-	res.Experiment = e
-	res.Pass, res.Note, err = exp.Run(e, sysCfg, syConfig)
-	if err != nil {
-		return res, fmt.Errorf("failure during the execution of the experiment: %s", err)
+	expRes.Experiment = e
+	expRes.Pass, expRes, execRes = exp.Run(e, sysCfg, syConfig)
+	if execRes.Err != nil {
+		return expRes, fmt.Errorf("failure during the execution of the experiment: %s", execRes.Err)
 	}
 
-	return res, nil
+	return expRes, nil
 }
 
 func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) []results.Result {

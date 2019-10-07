@@ -17,6 +17,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/results"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 
@@ -53,7 +55,7 @@ func GetMPIImplemFromExperiments(experiments []mpi.Experiment) string {
 	return experiments[0].MPIImplm
 }
 
-func saveErrorDetails(exp mpi.Experiment, sysCfg *sys.Config, res mpi.ExecResult) error {
+func saveErrorDetails(exp mpi.Experiment, sysCfg *sys.Config, res *mpi.ExecResult) error {
 	experimentName := exp.VersionHostMPI + "-" + exp.VersionContainerMPI
 	targetDir := filepath.Join(sysCfg.BinPath, "errors", exp.MPIImplm, experimentName)
 
@@ -121,28 +123,37 @@ func pullContainerImage(myContainerMPICfg *mpi.Config, exp mpi.Experiment, sysCf
 	return nil
 }
 
-func createNewContainer(myContainerMPICfg *mpi.Config, exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) error {
+func createNewContainer(myContainerMPICfg *mpi.Config, exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) mpi.ExecResult {
+	var res mpi.ExecResult
+
 	/* CREATE THE CONTAINER MPI CONFIGURATION */
 	if sysCfg.Persistent != "" && util.FileExists(myContainerMPICfg.ContainerPath) {
 		log.Printf("* %s already exists, skipping...\n", myContainerMPICfg.ContainerPath)
-		return nil
+		return res
 	}
 
 	/* CREATE THE MPI CONTAINER */
 
-	res := createMPIContainer(myContainerMPICfg, sysCfg)
+	res = createMPIContainer(myContainerMPICfg, sysCfg)
 	if res.Err != nil {
-		_ = saveErrorDetails(exp, sysCfg, res)
-		return fmt.Errorf("failed to create container: %s", res.Err)
+		err := saveErrorDetails(exp, sysCfg, &res)
+		if err != nil {
+			res.Err = fmt.Errorf("failed to save error details: %s", err)
+			return res
+		}
+		res.Err = fmt.Errorf("failed to create container: %s", res.Err)
+		return res
 	}
 
-	return nil
+	return res
 }
 
 // Run configure, install and execute a given experiment
-func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, string, error) {
+func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, results.Result, mpi.ExecResult) {
 	var myHostMPICfg mpi.Config
 	var myContainerMPICfg mpi.Config
+	var execRes mpi.ExecResult
+	var expRes results.Result
 	var err error
 
 	/* CREATE THE HOST MPI CONFIGURATION */
@@ -150,7 +161,9 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 	// Create a temporary directory where to compile MPI
 	myHostMPICfg.BuildDir, err = ioutil.TempDir("", "mpi_build_"+exp.VersionHostMPI+"-")
 	if err != nil {
-		return false, "", fmt.Errorf("failed to create compile directory: %s", err)
+		execRes.Err = fmt.Errorf("failed to create compile directory: %s", err)
+		expRes.Pass = false
+		return false, expRes, execRes
 	}
 	defer os.RemoveAll(myHostMPICfg.BuildDir)
 
@@ -159,7 +172,9 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 		// Create a temporary directory where to install MPI
 		myHostMPICfg.InstallDir, err = ioutil.TempDir("", hostInstallDirPrefix+"-")
 		if err != nil {
-			return false, "", fmt.Errorf("failed to create install directory: %s", err)
+			execRes.Err = fmt.Errorf("failed to create install directory: %s", err)
+			expRes.Pass = false
+			return false, expRes, execRes
 		}
 		defer os.RemoveAll(myHostMPICfg.InstallDir)
 	} else {
@@ -179,16 +194,21 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 
 	/* INSTALL MPI ON THE HOST */
 
-	res := mpi.InstallHost(&myHostMPICfg, sysCfg)
-	if res.Err != nil {
-		_ = saveErrorDetails(exp, sysCfg, res)
-		return false, "", fmt.Errorf("failed to install host MPI: %s", res.Err)
+	execRes = mpi.InstallHost(&myHostMPICfg, sysCfg)
+	if execRes.Err != nil {
+		execRes.Err = fmt.Errorf("failed to install host MPI: %s", execRes.Err)
+		err = saveErrorDetails(exp, sysCfg, &execRes)
+		if err != nil {
+			execRes.Err = fmt.Errorf("failed to save error details: %s", err)
+		}
+		expRes.Pass = false
+		return false, expRes, execRes
 	}
 	if sysCfg.Persistent != "" {
 		defer func() {
-			res = mpi.UninstallHost(&myHostMPICfg, sysCfg)
-			if res.Err != nil {
-				log.Fatal(err)
+			execRes = mpi.UninstallHost(&myHostMPICfg, sysCfg)
+			if execRes.Err != nil {
+				log.Fatalf("failed to uninstall MPI: %s", err)
 			}
 		}()
 	}
@@ -204,7 +224,9 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 	if sysCfg.Persistent == "" {
 		myContainerMPICfg.BuildDir, err = ioutil.TempDir("", containerInstallDir+"-")
 		if err != nil {
-			return false, "", fmt.Errorf("failed to create directory to build container: %s", err)
+			execRes.Err = fmt.Errorf("failed to create directory to build container: %s", err)
+			expRes.Pass = false
+			return false, expRes, execRes
 		}
 		defer os.RemoveAll(myContainerMPICfg.BuildDir)
 	} else {
@@ -213,7 +235,9 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 		if !util.PathExists(myContainerMPICfg.BuildDir) {
 			err := os.MkdirAll(myContainerMPICfg.BuildDir, 0755)
 			if err != nil {
-				return false, "", fmt.Errorf("failed to create %s: %s", myContainerMPICfg.BuildDir, err)
+				execRes.Err = fmt.Errorf("failed to create %s: %s", myContainerMPICfg.BuildDir, err)
+				expRes.Pass = false
+				return false, expRes, execRes
 			}
 		}
 	}
@@ -226,14 +250,18 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 
 	// Pull or build the image
 	if syConfig.BuildPrivilege {
-		err = createNewContainer(&myContainerMPICfg, exp, sysCfg, syConfig)
-		if err != nil {
-			return false, "", fmt.Errorf("failed to create container: %s", err)
+		execRes = createNewContainer(&myContainerMPICfg, exp, sysCfg, syConfig)
+		if execRes.Err != nil {
+			execRes.Err = fmt.Errorf("failed to create container: %s", err)
+			expRes.Pass = false
+			return false, expRes, execRes
 		}
 	} else {
 		err = pullContainerImage(&myContainerMPICfg, exp, sysCfg, syConfig)
 		if err != nil {
-			return false, "", fmt.Errorf("failed to pull container: %s", err)
+			execRes.Err = fmt.Errorf("failed to pull container: %s", err)
+			expRes.Pass = false
+			return false, expRes, execRes
 		}
 	}
 
@@ -258,31 +286,45 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 	submitCmd.Cmd.Stdout = &stdout
 	submitCmd.Cmd.Stderr = &stderr
 	if err != nil {
-		return false, "", fmt.Errorf("failed to prepare the launch command: %s", err)
+		execRes.Err = fmt.Errorf("failed to prepare the launch command: %s", err)
+		expRes.Pass = false
+		return false, expRes, execRes
 	}
 	defer submitCmd.CancelFn()
 	err = submitCmd.Cmd.Run()
+	// Get the command out/err
+	execRes.Stderr = stderr.String()
+	execRes.Stdout = stdout.String()
+	// And add the job out/err (for when we actually use a real job manager such as Slurm)
+	execRes.Stdout += mpiJob.GetOutput(&mpiJob, sysCfg)
+	execRes.Stderr += mpiJob.GetError(&mpiJob, sysCfg)
 	if err != nil || submitCmd.Ctx.Err() == context.DeadlineExceeded || re.Match(stdout.Bytes()) {
 		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
-		var res mpi.ExecResult
-		res.Err = err
-		res.Stderr = stderr.String()
-		res.Stdout = stdout.String()
-		err = saveErrorDetails(exp, sysCfg, res)
-		return false, "", err
+		execRes.Err = err
+		err = saveErrorDetails(exp, sysCfg, &execRes)
+		if err != nil {
+			execRes.Err = fmt.Errorf("impossible to cleanly handle error: %s", err)
+			expRes.Pass = false
+			return false, expRes, execRes
+		}
+		expRes.Pass = false
+		return false, expRes, execRes
 	}
 
-	log.Printf("Successful run - stdout: %s; stderr: %s\n", stdout.String(), stderr.String())
+	log.Printf("Successful run - stdout: %s; stderr: %s\n", execRes.Stdout, execRes.Stderr)
 
 	log.Println("Handling data...")
-	note, err := postExecutionDataMgt(exp, sysCfg, stdout.String())
+	expRes.Note, err = postExecutionDataMgt(exp, sysCfg, execRes.Stdout)
 	if err != nil {
-		return true, "", fmt.Errorf("failed to handle data: %s", err)
+		execRes.Err = fmt.Errorf("failed to handle data: %s", err)
+		expRes.Pass = false
+		return false, expRes, execRes
 	}
 
-	log.Println("NOTE: ", note)
+	log.Println("NOTE: ", expRes.Note)
 
-	return true, note, nil
+	expRes.Pass = true
+	return false, expRes, execRes
 }
 
 func getAppData(mpiCfg *mpi.Config, sysCfg *sys.Config) {
