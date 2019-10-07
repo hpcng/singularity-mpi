@@ -76,3 +76,14 @@ func LoadKeyValueConfig(filepath string) ([]KV, error) {
 
 	return data, nil
 }
+
+// ToStringSlice converts a slice of key/value pairs into a slice of strings
+func ToStringSlice(kvs []KV) []string {
+	var newSlice []string
+
+	for _, kv := range kvs {
+		newSlice = append(newSlice, kv.Key+" = "+kv.Value+"\n")
+	}
+
+	return newSlice
+}

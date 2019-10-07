@@ -52,16 +52,16 @@ func getListExperiments(config *cfg.Config) []mpi.Experiment {
 }
 
 func runExperiment(e mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (results.Result, error) {
-	var res results.Result
-	var err error
+	var expRes results.Result
+	var execRes mpi.ExecResult
 
-	res.Experiment = e
-	res.Pass, res.Note, err = exp.Run(e, sysCfg, syConfig)
-	if err != nil {
-		return res, fmt.Errorf("failure during the execution of the experiment: %s", err)
+	expRes.Experiment = e
+	expRes.Pass, expRes, execRes = exp.Run(e, sysCfg, syConfig)
+	if execRes.Err != nil {
+		return expRes, fmt.Errorf("failure during the execution of the experiment: %s", execRes.Err)
 	}
 
-	return res, nil
+	return expRes, nil
 }
 
 func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) []results.Result {
@@ -82,11 +82,12 @@ func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolC
 		success := true
 		failure := false
 		var newRes results.Result
+		var err error
 
 		var i int
 		for i = 0; i < sysCfg.Nrun; i++ {
 			log.Printf("Running experiment %d/%d with host MPI %s and container MPI %s\n", i+1, sysCfg.Nrun, e.VersionHostMPI, e.VersionContainerMPI)
-			newRes, err := runExperiment(e, sysCfg, syConfig)
+			newRes, err = runExperiment(e, sysCfg, syConfig)
 			if err != nil {
 				log.Fatalf("failure during the execution of experiment: %s", err)
 			}
@@ -209,6 +210,7 @@ func main() {
 	nRun := flag.Int("n", 1, "Number of iterations")
 	appContainizer := flag.String("app-containizer", "", "Path to the configuration file for automatically containerization an application")
 	upload := flag.Bool("upload", false, "Upload generated images (appropriate configuration files need to specify the registry's URL")
+	persistent := flag.String("persistent-installs", "", "Keep the MPI installations on the host and the container images in the specified directory (instead of deleting everything once an experiment terminates)")
 
 	flag.Parse()
 
@@ -221,6 +223,7 @@ func main() {
 	sysCfg.Upload = *upload
 	sysCfg.Verbose = *verbose
 	sysCfg.Debug = *debug
+	sysCfg.Persistent = *persistent
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {
@@ -240,6 +243,14 @@ func main() {
 	syConfig.BuildPrivilege, err = strconv.ParseBool(kv.GetValue(kvs, sy.BuildPrivilegeKey))
 	if err != nil {
 		log.Fatalf("failed to load the tool's configuration: %s", err)
+	}
+
+	// Load more system configuration details from the singularity-mpi.conf file
+	if kv.GetValue(kvs, sys.SlurmEnabledKey) != "" {
+		sysCfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, sys.SlurmEnabledKey))
+		if err != nil {
+			log.Fatalf("failed to load the Slurm configuration: %s", err)
+		}
 	}
 
 	// Figure out all the experiments that need to be executed

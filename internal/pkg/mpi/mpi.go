@@ -18,10 +18,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/autotools"
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
+)
+
+const (
+	// Openmpi is the string used to identify Open MPI
+	OpenMPI = "openmpi"
+
+	// Mpich is the string used to identify MPICH
+	MPICH = "mpich"
 )
 
 // Config represents a configuration of MPI for a target platform
@@ -54,18 +63,12 @@ type Config struct {
 	Distro string
 	// ImageURL is the URL to use to pull an image
 	ImageURL string
-
-	//	m4SrcPath       string // Path to the m4 tarball
-	//	autoconfSrcPath string // Path to the autoconf tarball
-	//	automakeSrcPath string // Path to the automake tarball
-	//	libtoolsSrcPath string // Path to the libtools tarball
 }
 
 type compileConfig struct {
 	mpiVersionTag string
 	mpiURLTag     string
 	mpiTarballTag string
-	//	mpiTarArgsTag string
 }
 
 // Experiment is a structure that represents the configuration of an experiment
@@ -318,10 +321,14 @@ func GetExtraMpirunArgs(mpiCfg *Config) []string {
 func UninstallHost(mpiCfg *Config, sysCfg *sys.Config) ExecResult {
 	var res ExecResult
 
-	log.Println("Uninstalling MPI on host...")
+	if sysCfg.Persistent == "" {
+		log.Println("Uninstalling MPI on host...")
 
-	if mpiCfg.MpiImplm == "intel" {
-		return runIntelScript(mpiCfg, sysCfg, "uninstall")
+		if mpiCfg.MpiImplm == "intel" {
+			return runIntelScript(mpiCfg, sysCfg, "uninstall")
+		}
+	} else {
+		log.Printf("Persistent installs mode, not uninstalling MPI from host")
 	}
 
 	return res
@@ -332,6 +339,12 @@ func InstallHost(myCfg *Config, sysCfg *sys.Config) ExecResult {
 	var res ExecResult
 
 	log.Println("Installing MPI on host...")
+	if sysCfg.Persistent != "" && util.PathExists(myCfg.InstallDir) {
+		log.Printf("* %s already exists, skipping installation...\n", myCfg.InstallDir)
+		return res
+	}
+
+	log.Printf("* %s does not exists, installing from scratch\n", myCfg.InstallDir)
 	res.Err = get(myCfg)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to download MPI from %s: %s", myCfg.URL, res.Err)
@@ -345,7 +358,7 @@ func InstallHost(myCfg *Config, sysCfg *sys.Config) ExecResult {
 	}
 
 	// Right now, we assume we do not have to install autotools, which is a bad assumption
-	res.Err = configure(myCfg)
+	res.Err = configure(myCfg, sysCfg)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to configure MPI: %s", res.Err)
 		return res
@@ -366,7 +379,7 @@ func InstallHost(myCfg *Config, sysCfg *sys.Config) ExecResult {
 	return res
 }
 
-func configure(mpiCfg *Config) error {
+func configure(mpiCfg *Config, sysCfg *sys.Config) error {
 	log.Printf("- Configuring MPI for installation in %s...", mpiCfg.InstallDir)
 
 	// Some sanity checks
@@ -374,22 +387,45 @@ func configure(mpiCfg *Config) error {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
-	// If the source code does not have a configure file, we simply skip the step
-	configurePath := filepath.Join(mpiCfg.srcDir, "configure")
-	if !util.FileExists(configurePath) {
-		fmt.Printf("-> %s does not exist, skipping the configuration step\n", configurePath)
-		return nil
-	}
+	/*
+		// If the source code does not have a configure file, we simply skip the step
+		var cmdStr string
+		if mpiCfg.MPIImplm != "openmpi" {
+			configurePath := filepath.Join(mpiCfg.srcDir, "configure")
+			if !util.FileExists(configurePath) {
+				fmt.Printf("-> %s does not exist, skipping the configuration step\n", configurePath)
+				return nil
+			}
+			cmdStr := "./configure --prefix=" + mpiCfg.InstallDir
+			} else {
+			cmdStr = configureOpenMPI(mpiCfg, sysCfg)
+		}
 
-	var stdout, stderr bytes.Buffer
-	log.Printf("* Execution (from %s): ./configure --prefix=%s", mpiCfg.srcDir, mpiCfg.InstallDir)
-	cmd := exec.Command("./configure", "--prefix="+mpiCfg.InstallDir)
-	cmd.Dir = mpiCfg.srcDir
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stdout
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+		var stdout, stderr bytes.Buffer
+		log.Printf("* Executing %s (from %s)", cmdStr, mpiCfg.srcDir)
+		cmd := exec.Command("./configure", "--prefix="+mpiCfg.InstallDir)
+		cmd.Dir = mpiCfg.srcDir
+		cmd.Stderr = &stderr
+		cmd.Stdout = &stdout
+		err := cmd.Run()
+		if err != nil {
+			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+		}
+	*/
+	switch mpiCfg.MpiImplm {
+	case OpenMPI:
+		err := configureOpenMPI(mpiCfg, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to configure Open MPI: %s", err)
+		}
+	default:
+		var ac autotools.Config
+		ac.Install = mpiCfg.InstallDir
+		ac.Source = mpiCfg.srcDir
+		err := autotools.Configure(&ac)
+		if err != nil {
+			return fmt.Errorf("failed to configure MPI: %s", err)
+		}
 	}
 
 	return nil
@@ -622,4 +658,19 @@ func CreateContainer(mpiCfg *Config, sysCfg *sys.Config) error {
 	}
 
 	return nil
+}
+
+// GetMpirunArgs returns the arguments required by a mpirun
+func GetMpirunArgs(myHostMPICfg *Config, myContainerMPICfg *Config) ([]string, error) {
+	args := []string{"singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath}
+
+	// We really do not want to do this but MPICH is being picky about args so for now, it will do the job.
+	if myHostMPICfg.MpiImplm == "intel" {
+		extraArgs := GetExtraMpirunArgs(myHostMPICfg)
+		if len(extraArgs) > 0 {
+			args = append(extraArgs, args...)
+		}
+	}
+
+	return args, nil
 }

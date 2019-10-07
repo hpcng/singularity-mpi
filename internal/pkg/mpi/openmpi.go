@@ -8,6 +8,7 @@ package mpi
 import (
 	"fmt"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/autotools"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
@@ -20,6 +21,23 @@ func updateOMPIDefFile(myCfg *Config, sysCfg *sys.Config) error {
 	err := updateDeffile(myCfg, sysCfg, &compileCfg)
 	if err != nil {
 		return fmt.Errorf("failed to update Open MPI definition file: %s", err)
+	}
+
+	return nil
+}
+
+func configureOpenMPI(mpiCfg *Config, sysCfg *sys.Config) error {
+	var ac autotools.Config
+
+	ac.Install = mpiCfg.InstallDir
+	ac.Source = mpiCfg.srcDir
+	if sysCfg.SlurmEnabled {
+		ac.ExtraConfigureArgs = []string{"--with-slurm"}
+	}
+
+	err := autotools.Configure(&ac)
+	if err != nil {
+		return fmt.Errorf("Unable to run configure: %s", err)
 	}
 
 	return nil
