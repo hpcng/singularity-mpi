@@ -126,7 +126,7 @@ func generateJobScript(j *Job, sysCfg *sys.Config, kvs []kv.KV) error {
 	if err != nil {
 		return fmt.Errorf("unable to get mpirun arguments: %s", err)
 	}
-	scriptText += "\n" + mpirunPath + " " + strings.Join(mpirunArgs, " ") + " " + j.AppBin + "\n"
+	scriptText += "\n" + mpirunPath + " " + strings.Join(mpirunArgs, " ") + "\n"
 
 	err = ioutil.WriteFile(j.BatchScript, []byte(scriptText), 0644)
 	if err != nil {
