@@ -74,8 +74,10 @@ type Job struct {
 	// ErrBuffer is a buffer with the stderr of the job
 	ErrBuffer bytes.Buffer
 
+	// GetOutput is the function to call to gather the output of the application based on the use of a given job manager
 	GetOutput GetOutputFn
 
+	// GetError is the function to call to gather stderr of the application based on the use of a given job manager
 	GetError GetErrorFn
 }
 
@@ -91,16 +93,22 @@ type Launcher struct {
 	Env     []string
 }
 
+// SetConfigFn is a "function pointer" that lets us store the configuration of a given job manager
 type SetConfigFn func() error
 
+// GetConfigFn is a "function pointer" that lets us get the configuration of a given job manager
 type GetConfigFn func() error
 
+// SubmitFn is a "function pointer" that lets us job a new job
 type SubmitFn func(*Job, *sys.Config) (Launcher, error)
 
+// CleanUpFn is a "function pointer" to call to clean up the system after the completion of a job
 type CleanUpFn func(...interface{}) error
 
+// GetOutputFn is a "function pointer" to call to gather the output of an application after completion of a job
 type GetOutputFn func(*Job, *sys.Config) string
 
+// GetErrorFn is a "function pointer" to call to gather stderr from an application after completion of a job
 type GetErrorFn func(*Job, *sys.Config) string
 
 // JM is the structure representing a specific JM
@@ -108,10 +116,13 @@ type JM struct {
 	// ID identifies which job manager has been detected on the system
 	ID string
 
+	// Set is the function that sets the configuration of the current job manager
 	Set SetConfigFn
 
+	// Get is the function that gets the configuration of the current job manager
 	Get GetConfigFn
 
+	// Submit is the function to submit a job through the current job manager
 	Submit SubmitFn
 }
 
@@ -133,6 +144,7 @@ func Detect() JM {
 	return comp
 }
 
+// TempFile creates a temporary file that is used to store a batch script
 func TempFile(j *Job, sysCfg *sys.Config) error {
 	filePrefix := "sbash-" + j.ContainerCfg.ContainerName
 	path := ""
@@ -164,6 +176,7 @@ func TempFile(j *Job, sysCfg *sys.Config) error {
 	return nil
 }
 
+// PrepareLaunchCmd interacts with a job manager backend to figure out how to launch a job
 func PrepareLaunchCmd(job *Job, sysCfg *sys.Config) (SubmitCmd, error) {
 	var cmd SubmitCmd
 

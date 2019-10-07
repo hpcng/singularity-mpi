@@ -77,6 +77,7 @@ func LoadKeyValueConfig(filepath string) ([]KV, error) {
 	return data, nil
 }
 
+// ToStringSlice converts a slice of key/value pairs into a slice of strings
 func ToStringSlice(kvs []KV) []string {
 	var newSlice []string
 

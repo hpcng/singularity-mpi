@@ -15,13 +15,16 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 )
 
+// Native is the structure representing the native job manager (i.e., directly use mpirun)
 type Native struct {
 }
 
+// NativeSetConfig sets the configuration of the native job manager
 func NativeSetConfig() error {
 	return nil
 }
 
+// NativeGetConfig gets the configuration of the native job manager
 func NativeGetConfig() error {
 	return nil
 }
@@ -44,14 +47,17 @@ func getEnvLDPath(mpiCfg *mpi.Config) string {
 	return filepath.Join(mpiCfg.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 }
 
+// NativeGetOutput retrieves the application's output after the completion of a job
 func NativeGetOutput(j *Job, sysCfg *sys.Config) string {
 	return j.OutBuffer.String()
 }
 
+// NativeGetError retrieves the error messages from an application after the completion of a job
 func NativeGetError(j *Job, sysCfg *sys.Config) string {
 	return j.ErrBuffer.String()
 }
 
+// NativeSubmit is the function to call to submit a job through the native job manager
 func NativeSubmit(j *Job, sysCfg *sys.Config) (Launcher, error) {
 	var l Launcher
 
@@ -86,6 +92,9 @@ func NativeSubmit(j *Job, sysCfg *sys.Config) (Launcher, error) {
 	return l, nil
 }
 
+// LoadNative is the function used by our job management framework to figure out if mpirun should be used directly.
+// The native component is the default job manager. If application, the function returns a structure with all the
+// "function pointers" to correctly use the native job manager.
 func LoadNative() (bool, JM) {
 	var jm JM
 	jm.ID = NativeID

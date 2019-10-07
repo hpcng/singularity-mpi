@@ -7,5 +7,8 @@ package sympierr
 
 import "errors"
 
+// ErrNotAvailable is the error returned when an element that is being looked up is not available
 var ErrNotAvailable = errors.New("item not available")
+
+// ErrFileExists is the error returned when trying to access a file that does not exist
 var ErrFileExists = errors.New("file already exists")

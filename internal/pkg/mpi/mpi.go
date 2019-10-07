@@ -63,18 +63,12 @@ type Config struct {
 	Distro string
 	// ImageURL is the URL to use to pull an image
 	ImageURL string
-
-	//	m4SrcPath       string // Path to the m4 tarball
-	//	autoconfSrcPath string // Path to the autoconf tarball
-	//	automakeSrcPath string // Path to the automake tarball
-	//	libtoolsSrcPath string // Path to the libtools tarball
 }
 
 type compileConfig struct {
 	mpiVersionTag string
 	mpiURLTag     string
 	mpiTarballTag string
-	//	mpiTarArgsTag string
 }
 
 // Experiment is a structure that represents the configuration of an experiment
@@ -666,6 +660,7 @@ func CreateContainer(mpiCfg *Config, sysCfg *sys.Config) error {
 	return nil
 }
 
+// GetMpirunArgs returns the arguments required by a mpirun
 func GetMpirunArgs(myHostMPICfg *Config, myContainerMPICfg *Config) ([]string, error) {
 	args := []string{"singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath}
 
@@ -675,17 +670,7 @@ func GetMpirunArgs(myHostMPICfg *Config, myContainerMPICfg *Config) ([]string, e
 		if len(extraArgs) > 0 {
 			args = append(extraArgs, args...)
 		}
-		/*
-			mpiCmd = exec.CommandContext(ctx, mpirunBin, args...)
-			log.Printf("-> Running: %s %s", mpirunBin, strings.Join(args, " "))
-		*/
 	}
-	/*
-		else {
-				mpiCmd = exec.CommandContext(ctx, mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath)
-				log.Printf("-> Running: %s %s", mpirunBin, strings.Join([]string{"-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath}, " "))
-		}
-	*/
 
 	return args, nil
 }

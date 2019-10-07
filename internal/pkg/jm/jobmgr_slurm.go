@@ -25,9 +25,14 @@ import (
 )
 
 const (
+	// SlurmParitionKey is the key to use to retrieve the optinal parition id that
+	// can be specified in the tool's configuration file.
 	SlurmPartitionKey = "slurm_partition"
 )
 
+// LoadSlurm is the function used by our job management framework to figure out if Slurm can be used and
+// if so return a JM structure with all the "function pointers" to interact with Slurm through our generic
+// API.
 func LoadSlurm() (bool, JM) {
 	var jm JM
 
@@ -45,6 +50,7 @@ func LoadSlurm() (bool, JM) {
 	return true, jm
 }
 
+// SlurmGetOutput reads the content of the Slurm output file that is associated to a job
 func SlurmGetOutput(j *Job, sysCfg *sys.Config) string {
 	outputFile := getJobOutputFilePath(j, sysCfg)
 	output, err := ioutil.ReadFile(outputFile)
@@ -55,6 +61,7 @@ func SlurmGetOutput(j *Job, sysCfg *sys.Config) string {
 	return string(output)
 }
 
+// SlurmGetError reads the content of the Slurm error file that is associated to a job
 func SlurmGetError(j *Job, sysCfg *sys.Config) string {
 	errorFile := getJobErrorFilePath(j, sysCfg)
 	errorTxt, err := ioutil.ReadFile(errorFile)
@@ -65,10 +72,12 @@ func SlurmGetError(j *Job, sysCfg *sys.Config) string {
 	return string(errorTxt)
 }
 
+// SlurmGetConfig is the Slurm function to get the configuration of the job manager
 func SlurmGetConfig() error {
 	return nil
 }
 
+// SlurmSetConfig is the Slurm function to set the configuration of the job manager
 func SlurmSetConfig() error {
 	log.Println("* Slurm detected, updating singularity-mpi configuration file")
 	configFile := sy.GetPathToSyMPIConfigFile()
@@ -194,6 +203,7 @@ func SlurmSubmit(j *Job, sysCfg *sys.Config) (Launcher, error) {
 	return l, nil
 }
 
+// SlurmCleanUp is the clean up function for Slurm
 func SlurmCleanUp(ctx context.Context, j Job) error {
 	err := j.CleanUp()
 	if err != nil {

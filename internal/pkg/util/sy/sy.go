@@ -27,6 +27,7 @@ import (
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
+// MPIToolConfig is the structure hosting the data from the tool's configuration file (~/.singularity/singularity-mpi.conf)
 type MPIToolConfig struct {
 	// BuildPrivilege specifies whether or not we can build images on the platform
 	BuildPrivilege bool
@@ -45,6 +46,7 @@ const (
 	KeyIndex = "SY_KEY_INDEX"
 )
 
+// Pull retieves an image from the registry
 func Pull(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	var stdout, stderr bytes.Buffer
 
@@ -74,6 +76,7 @@ func Pull(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	return nil
 }
 
+// Sign signs a given image
 func Sign(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	var stdout, stderr bytes.Buffer
 
@@ -112,6 +115,7 @@ func Sign(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	return nil
 }
 
+// Upload uploads an image to a registry
 func Upload(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	var stdout, stderr bytes.Buffer
 
@@ -131,6 +135,7 @@ func Upload(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
 	return nil
 }
 
+// GetPathToSyMPIConfigFile returns the path to the tool's configuration file
 func GetPathToSyMPIConfigFile() string {
 	return filepath.Join(syfs.ConfigDir(), "singularity-mpi.conf")
 }
@@ -163,6 +168,7 @@ func initMPIConfigFile() ([]string, error) {
 	return data, nil
 }
 
+// LoadMPIConfigFile loads the tool's configuration file into a slice of key/value pairs
 func LoadMPIConfigFile() ([]kv.KV, error) {
 	syMPIConfigFile := GetPathToSyMPIConfigFile()
 	kvs, err := kv.LoadKeyValueConfig(syMPIConfigFile)
@@ -197,6 +203,7 @@ func CreateMPIConfigFile() (string, error) {
 	return syMPIConfigFile, nil
 }
 
+// ConfigFileUpdateEntry updates the value of a key in the tool's configuration file
 func ConfigFileUpdateEntry(configFile string, key string, value string) error {
 	kvs, err := LoadMPIConfigFile()
 	if err != nil {
