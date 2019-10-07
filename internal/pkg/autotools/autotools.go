@@ -8,6 +8,7 @@ package autotools
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os/exec"
 	"path/filepath"
 
@@ -42,7 +43,7 @@ func Configure(cfg *Config) error {
 		cmdArgs = append(cmdArgs, cfg.ExtraConfigureArgs...)
 	}
 
-	fmt.Printf("-> Running 'configure': %s %s\n", configurePath, cmdArgs)
+	log.Printf("-> Running 'configure': %s %s\n", configurePath, cmdArgs)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(configurePath)
 	if len(cmdArgs) > 0 {
