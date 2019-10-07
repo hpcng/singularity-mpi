@@ -6,6 +6,7 @@
 package experiments
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -110,8 +111,6 @@ func pullContainerImage(myContainerMPICfg *mpi.Config, exp mpi.Experiment, sysCf
 	if err != nil {
 		return fmt.Errorf("failed to pull image: %s", err)
 	}
-
-	getAppData(myContainerMPICfg, sysCfg)
 
 	log.Println("* Container MPI configuration *")
 	log.Println("-> Build container in", myContainerMPICfg.BuildDir)
@@ -223,6 +222,9 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 	myContainerMPICfg.MpiImplm = exp.MPIImplm
 	myContainerMPICfg.MpiVersion = exp.VersionContainerMPI
 	myContainerMPICfg.ImageURL = sy.GetImageURL(&myContainerMPICfg, sysCfg)
+	getAppData(&myContainerMPICfg, sysCfg)
+
+	// Pull or build the image
 	if syConfig.BuildPrivilege {
 		err = createNewContainer(&myContainerMPICfg, exp, sysCfg, syConfig)
 		if err != nil {
@@ -242,27 +244,6 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 	// Regex to catch errors where mpirun returns 0 but is known to have failed because displaying the help message
 	var re = regexp.MustCompile(`^(\n?)Usage:`)
 
-	/*
-		mpirunBin := mpi.GetPathToMpirun(&myHostMPICfg)
-
-		// We have to be careful: if we leave an empty argument in the slice, it may lead to a mpirun failure.
-		var mpiCmd *exec.Cmd
-		// We really do not want to do this but MPICH is being picky about args so for now, it will do the job.
-		if myHostMPICfg.MpiImplm == "intel" {
-			extraArgs := mpi.GetExtraMpirunArgs(&myHostMPICfg)
-
-			args := []string{"-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath}
-			if len(extraArgs) > 0 {
-				args = append(extraArgs, args...)
-			}
-			mpiCmd = exec.CommandContext(ctx, mpirunBin, args...)
-			log.Printf("-> Running: %s %s", mpirunBin, strings.Join(args, " "))
-		} else {
-			mpiCmd = exec.CommandContext(ctx, mpirunBin, "-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath)
-			log.Printf("-> Running: %s %s", mpirunBin, strings.Join([]string{"-np", "2", "singularity", "exec", myContainerMPICfg.ContainerPath, myContainerMPICfg.TestPath}, " "))
-		}
-	*/
-
 	// mpiJob describes the job
 	var mpiJob jm.Job
 	mpiJob.HostCfg = &myHostMPICfg
@@ -273,25 +254,28 @@ func Run(exp mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bo
 
 	// We submit the job
 	submitCmd, err := jm.PrepareLaunchCmd(&mpiJob, sysCfg)
+	var stdout, stderr bytes.Buffer
+	submitCmd.Cmd.Stdout = &stdout
+	submitCmd.Cmd.Stderr = &stderr
 	if err != nil {
 		return false, "", fmt.Errorf("failed to prepare the launch command: %s", err)
 	}
 	defer submitCmd.CancelFn()
 	err = submitCmd.Cmd.Run()
-	if err != nil || submitCmd.Ctx.Err() == context.DeadlineExceeded || re.Match(submitCmd.Stdout.Bytes()) {
-		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", submitCmd.Stdout.String(), submitCmd.Stderr.String(), err)
+	if err != nil || submitCmd.Ctx.Err() == context.DeadlineExceeded || re.Match(stdout.Bytes()) {
+		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
 		var res mpi.ExecResult
 		res.Err = err
-		res.Stderr = submitCmd.Stderr.String()
-		res.Stdout = submitCmd.Stdout.String()
+		res.Stderr = stderr.String()
+		res.Stdout = stdout.String()
 		err = saveErrorDetails(exp, sysCfg, res)
 		return false, "", err
 	}
 
-	log.Printf("Successful run - stdout: %s; stderr: %s\n", submitCmd.Stdout.String(), submitCmd.Stderr.String())
+	log.Printf("Successful run - stdout: %s; stderr: %s\n", stdout.String(), stderr.String())
 
 	log.Println("Handling data...")
-	note, err := postExecutionDataMgt(exp, sysCfg, submitCmd.Stdout.String())
+	note, err := postExecutionDataMgt(exp, sysCfg, stdout.String())
 	if err != nil {
 		return true, "", fmt.Errorf("failed to handle data: %s", err)
 	}

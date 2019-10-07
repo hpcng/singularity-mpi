@@ -83,6 +83,10 @@ func generateJobScript(j *Job, sysCfg *sys.Config, kvs []kv.KV) error {
 		return fmt.Errorf("undefined scratch directory")
 	}
 
+	if j.AppBin == "" {
+		return fmt.Errorf("application binary is undefined")
+	}
+
 	// Create the batch script
 	err := TempFile(j, sysCfg)
 	if err != nil {

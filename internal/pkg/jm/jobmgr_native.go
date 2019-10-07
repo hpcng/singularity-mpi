@@ -4,6 +4,7 @@
 package jm
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -46,16 +47,28 @@ func getEnvLDPath(mpiCfg *mpi.Config) string {
 func NativeSubmit(j *Job, sysCfg *sys.Config) (Launcher, error) {
 	var l Launcher
 
-	l.Cmd = "mpirun"
+	if j.AppBin == "" {
+		return l, fmt.Errorf("application binary is undefined")
+	}
+
+	l.Cmd = mpi.GetPathToMpirun(j.HostCfg)
 	if j.NP > 0 {
 		l.CmdArgs = append(l.CmdArgs, "-np")
 		l.CmdArgs = append(l.CmdArgs, strconv.FormatInt(j.NP, 10))
 	}
 
+	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, j.ContainerCfg)
+	if err != nil {
+		return l, fmt.Errorf("unable to get mpirun arguments: %s", err)
+	}
+	l.CmdArgs = append(l.CmdArgs, mpirunArgs...)
+
 	newPath := getEnvPath(j.HostCfg)
 	newLDPath := getEnvLDPath(j.HostCfg)
 	log.Printf("-> PATH=%s", newPath)
 	log.Printf("-> LD_LIBRARY_PATH=%s\n", newLDPath)
+	log.Printf("Using %s as PATH\n", newPath)
+	log.Printf("Using %s as LD_LIBRARY_PATH\n", newLDPath)
 	l.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
 	l.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
 

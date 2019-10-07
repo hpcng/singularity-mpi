@@ -6,7 +6,6 @@
 package jm
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -41,12 +40,6 @@ type SubmitCmd struct {
 
 	// CancelFn is the function to cancel the command to submit a job
 	CancelFn context.CancelFunc
-
-	// Stdout is the stdout of the command
-	Stdout bytes.Buffer
-
-	// Stderr is the stderr of the command
-	Stderr bytes.Buffer
 
 	// Env is the environment to append when executing the command
 	Env []string
@@ -176,8 +169,6 @@ func PrepareLaunchCmd(job *Job, sysCfg *sys.Config) (SubmitCmd, error) {
 
 	cmd.Ctx, cmd.CancelFn = context.WithTimeout(context.Background(), sys.CmdTimeout*time.Minute)
 	cmd.Cmd = exec.CommandContext(cmd.Ctx, launcher.Cmd, launcher.CmdArgs...)
-	cmd.Cmd.Stdout = &cmd.Stdout
-	cmd.Cmd.Stderr = &cmd.Stderr
 
 	return cmd, nil
 }
