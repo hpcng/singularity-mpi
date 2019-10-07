@@ -82,11 +82,12 @@ func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolC
 		success := true
 		failure := false
 		var newRes results.Result
+		var err error
 
 		var i int
 		for i = 0; i < sysCfg.Nrun; i++ {
 			log.Printf("Running experiment %d/%d with host MPI %s and container MPI %s\n", i+1, sysCfg.Nrun, e.VersionHostMPI, e.VersionContainerMPI)
-			newRes, err := runExperiment(e, sysCfg, syConfig)
+			newRes, err = runExperiment(e, sysCfg, syConfig)
 			if err != nil {
 				log.Fatalf("failure during the execution of experiment: %s", err)
 			}
@@ -245,9 +246,11 @@ func main() {
 	}
 
 	// Load more system configuration details from the singularity-mpi.conf file
-	sysCfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, sys.SlurmEnabledKey))
-	if err != nil {
-		log.Fatalf("failed to load the Slurm configuration: %s", err)
+	if kv.GetValue(kvs, sys.SlurmEnabledKey) != "" {
+		sysCfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, sys.SlurmEnabledKey))
+		if err != nil {
+			log.Fatalf("failed to load the Slurm configuration: %s", err)
+		}
 	}
 
 	// Figure out all the experiments that need to be executed
