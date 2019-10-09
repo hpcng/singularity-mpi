@@ -3,4 +3,17 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-package mpi
+package implem
+
+const (
+	OMPI  = "openmpi"
+	MPICH = "mpich"
+	IMPI  = "intel"
+)
+
+type Info struct {
+	ID      string
+	Version string
+	URL     string
+	Tarball string
+}

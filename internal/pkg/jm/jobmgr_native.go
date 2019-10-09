@@ -12,9 +12,14 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-
+	"github.com/sylabs/singularity-mpi/internal/pkg/job"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
 // Native is the structure representing the native job manager (i.e., directly use mpirun)
@@ -31,73 +36,70 @@ func NativeGetConfig() error {
 	return nil
 }
 
-func getEnvPath(mpiCfg *mpi.Config) string {
+func getEnvPath(mpiCfg *implem.Info, env *buildenv.Info) string {
 	// Intel MPI is installing the binaries and libraries in a quite complex setup
-	if mpiCfg.MpiImplm == "intel" {
-		return filepath.Join(mpiCfg.InstallDir, mpi.IntelInstallPathPrefix, "bin") + ":" + os.Getenv("PATH")
+	if mpiCfg.ID == implem.IMPI {
+		return filepath.Join(env.InstallDir, impi.IntelInstallPathPrefix, "bin") + ":" + os.Getenv("PATH")
 	}
 
-	return filepath.Join(mpiCfg.InstallDir, "bin") + ":" + os.Getenv("PATH")
+	return filepath.Join(env.InstallDir, "bin") + ":" + os.Getenv("PATH")
 }
 
-func getEnvLDPath(mpiCfg *mpi.Config) string {
+func getEnvLDPath(mpiCfg *implem.Info, env *buildenv.Info) string {
 	// Intel MPI is installing the binaries and libraries in a quite complex setup
-	if mpiCfg.MpiImplm == "intel" {
-		return filepath.Join(mpiCfg.InstallDir, mpi.IntelInstallPathPrefix, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
+	if mpiCfg.ID == implem.IMPI {
+		return filepath.Join(env.InstallDir, impi.IntelInstallPathPrefix, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 	}
 
-	return filepath.Join(mpiCfg.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
+	return filepath.Join(env.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 }
 
 // NativeGetOutput retrieves the application's output after the completion of a job
-func NativeGetOutput(j *Job, sysCfg *sys.Config) string {
+func NativeGetOutput(j *job.Job, sysCfg *sys.Config) string {
 	return j.OutBuffer.String()
 }
 
 // NativeGetError retrieves the error messages from an application after the completion of a job
-func NativeGetError(j *Job, sysCfg *sys.Config) string {
+func NativeGetError(j *job.Job, sysCfg *sys.Config) string {
 	return j.ErrBuffer.String()
 }
 
 // NativeSubmit is the function to call to submit a job through the native job manager
-func NativeSubmit(j *Job, sysCfg *sys.Config) (Launcher, error) {
-	var l Launcher
+func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.SyCmd, error) {
+	var sycmd syexec.SyCmd
 
-	if j.AppBin == "" {
-		return l, fmt.Errorf("application binary is undefined")
+	if j.App.BinPath == "" {
+		return sycmd, fmt.Errorf("application binary is undefined")
 	}
 
-	l.Cmd = mpi.GetPathToMpirun(j.HostCfg)
+	sycmd.BinPath = mpi.GetPathToMpirun(j.HostCfg, env)
 	if j.NP > 0 {
-		l.CmdArgs = append(l.CmdArgs, "-np")
-		l.CmdArgs = append(l.CmdArgs, strconv.FormatInt(j.NP, 10))
+		sycmd.CmdArgs = append(sycmd.CmdArgs, "-np")
+		sycmd.CmdArgs = append(sycmd.CmdArgs, strconv.FormatInt(j.NP, 10))
 	}
 
-	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, j.ContainerCfg)
+	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, &j.App, j.Container, sysCfg)
 	if err != nil {
-		return l, fmt.Errorf("unable to get mpirun arguments: %s", err)
+		return sycmd, fmt.Errorf("unable to get mpirun arguments: %s", err)
 	}
-	l.CmdArgs = append(l.CmdArgs, mpirunArgs...)
+	sycmd.CmdArgs = append(sycmd.CmdArgs, mpirunArgs...)
 
-	newPath := getEnvPath(j.HostCfg)
-	newLDPath := getEnvLDPath(j.HostCfg)
+	newPath := getEnvPath(j.HostCfg, env)
+	newLDPath := getEnvLDPath(j.HostCfg, env)
 	log.Printf("-> PATH=%s", newPath)
 	log.Printf("-> LD_LIBRARY_PATH=%s\n", newLDPath)
 	log.Printf("Using %s as PATH\n", newPath)
 	log.Printf("Using %s as LD_LIBRARY_PATH\n", newLDPath)
-	l.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
-	l.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
+	sycmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
+	sycmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
 
-	j.GetOutput = NativeGetOutput
-	j.GetError = NativeGetError
-
-	return l, nil
+	return sycmd, nil
 }
 
 // LoadNative is the function used by our job management framework to figure out if mpirun should be used directly.
 // The native component is the default job manager. If application, the function returns a structure with all the
 // "function pointers" to correctly use the native job manager.
-func LoadNative() (bool, JM) {
+func NativeDetect() (bool, JM) {
 	var jm JM
 	jm.ID = NativeID
 	jm.Get = NativeGetConfig

@@ -6,7 +6,6 @@
 package jm
 
 import (
-	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -15,25 +14,21 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
-
+	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/job"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/slurm"
+	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
-)
-
-const (
-	// SlurmParitionKey is the key to use to retrieve the optinal parition id that
-	// can be specified in the tool's configuration file.
-	SlurmPartitionKey = "slurm_partition"
 )
 
 // LoadSlurm is the function used by our job management framework to figure out if Slurm can be used and
 // if so return a JM structure with all the "function pointers" to interact with Slurm through our generic
 // API.
-func LoadSlurm() (bool, JM) {
+func SlurmDetect() (bool, JM) {
 	var jm JM
 
 	_, err := exec.LookPath("sbatch")
@@ -46,12 +41,13 @@ func LoadSlurm() (bool, JM) {
 	jm.Set = SlurmSetConfig
 	jm.Get = SlurmGetConfig
 	jm.Submit = SlurmSubmit
+	jm.Load = SlurmLoad
 
 	return true, jm
 }
 
 // SlurmGetOutput reads the content of the Slurm output file that is associated to a job
-func SlurmGetOutput(j *Job, sysCfg *sys.Config) string {
+func SlurmGetOutput(j *job.Job, sysCfg *sys.Config) string {
 	outputFile := getJobOutputFilePath(j, sysCfg)
 	output, err := ioutil.ReadFile(outputFile)
 	if err != nil {
@@ -62,7 +58,7 @@ func SlurmGetOutput(j *Job, sysCfg *sys.Config) string {
 }
 
 // SlurmGetError reads the content of the Slurm error file that is associated to a job
-func SlurmGetError(j *Job, sysCfg *sys.Config) string {
+func SlurmGetError(j *job.Job, sysCfg *sys.Config) string {
 	errorFile := getJobErrorFilePath(j, sysCfg)
 	errorTxt, err := ioutil.ReadFile(errorFile)
 	if err != nil {
@@ -79,31 +75,60 @@ func SlurmGetConfig() error {
 
 // SlurmSetConfig is the Slurm function to set the configuration of the job manager
 func SlurmSetConfig() error {
-	log.Println("* Slurm detected, updating singularity-mpi configuration file")
 	configFile := sy.GetPathToSyMPIConfigFile()
 
-	err := sy.ConfigFileUpdateEntry(configFile, sys.SlurmEnabledKey, "true")
+	err := sy.ConfigFileUpdateEntry(configFile, slurm.EnabledKey, "true")
 	if err != nil {
-		return fmt.Errorf("failed to update entry %s in %s: %s", sys.SlurmEnabledKey, configFile, err)
+		return fmt.Errorf("failed to update entry %s in %s: %s", slurm.EnabledKey, configFile, err)
 	}
 	return nil
 }
 
-const (
-	slurmScriptCmdPrefix = "#SBATCH"
-)
+func SlurmLoad(jm *JM, sysCfg *sys.Config) error {
+	log.Println("* Slurm detected, updating the configuration file")
+	kvs, err := kv.LoadKeyValueConfig(sysCfg.SyConfigFile)
+	if err != nil {
+		return fmt.Errorf("unable to load configuration from %s: %s", sysCfg.SyConfigFile, err)
+	}
+	if kv.GetValue(kvs, slurm.EnabledKey) == "" {
+		err := SlurmSetConfig()
+		if err != nil {
+			return fmt.Errorf("unable to add Slurm entry in configuration file: %s", err)
+		}
+		/*
+			sysCfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, SlurmEnabledKey))
+			if err != nil {
+				log.Fatalf("failed to load the Slurm configuration: %s", err)
+			}
+		*/
+	}
 
-func getJobOutputFilePath(j *Job, sysCfg *sys.Config) string {
-	errorFilename := j.ContainerCfg.ContainerName + ".out"
-	return filepath.Join(sysCfg.ScratchDir, errorFilename)
+	return nil
 }
 
-func getJobErrorFilePath(j *Job, sysCfg *sys.Config) string {
-	outputFilename := j.ContainerCfg.ContainerName + ".err"
-	return filepath.Join(sysCfg.ScratchDir, outputFilename)
+func getJobOutFilenamePrefix(j *job.Job) string {
+	return "host-" + j.HostCfg.ID + "-" + j.HostCfg.Version + "_container-" + j.Container.Name
 }
 
-func generateJobScript(j *Job, sysCfg *sys.Config, kvs []kv.KV) error {
+func getJobOutputFilePath(j *job.Job, sysCfg *sys.Config) string {
+	errorFilename := getJobOutFilenamePrefix(j) + ".out"
+	path := filepath.Join(sysCfg.ScratchDir, errorFilename)
+	if sysCfg.Persistent != "" {
+		path = filepath.Join(j.Container.InstallDir, errorFilename)
+	}
+	return path
+}
+
+func getJobErrorFilePath(j *job.Job, sysCfg *sys.Config) string {
+	outputFilename := getJobOutFilenamePrefix(j) + ".err"
+	path := filepath.Join(sysCfg.ScratchDir, outputFilename)
+	if sysCfg.Persistent != "" {
+		path = filepath.Join(j.Container.InstallDir, outputFilename)
+	}
+	return path
+}
+
+func generateJobScript(j *job.Job, env *buildenv.Info, sysCfg *sys.Config, kvs []kv.KV) error {
 	// Sanity checks
 	if j == nil {
 		return fmt.Errorf("undefined job")
@@ -114,7 +139,7 @@ func generateJobScript(j *Job, sysCfg *sys.Config, kvs []kv.KV) error {
 		return fmt.Errorf("undefined host configuration")
 	}
 
-	if j.HostCfg.InstallDir == "" {
+	if env.InstallDir == "" {
 		return fmt.Errorf("undefined host installation directory")
 	}
 
@@ -122,12 +147,12 @@ func generateJobScript(j *Job, sysCfg *sys.Config, kvs []kv.KV) error {
 		return fmt.Errorf("undefined scratch directory")
 	}
 
-	if j.AppBin == "" {
+	if j.App.BinPath == "" {
 		return fmt.Errorf("application binary is undefined")
 	}
 
 	// Create the batch script
-	err := TempFile(j, sysCfg)
+	err := TempFile(j, env, sysCfg)
 	if err != nil {
 		if err == sympierr.ErrFileExists {
 			log.Printf("* Script %s already esists, skipping\n", j.BatchScript)
@@ -136,30 +161,35 @@ func generateJobScript(j *Job, sysCfg *sys.Config, kvs []kv.KV) error {
 		return fmt.Errorf("unable to create temporary file: %s", err)
 	}
 
+	// TempFile is supposed to set the path to the batch script
+	if j.BatchScript == "" {
+		return fmt.Errorf("Batch script path is undefined")
+	}
+
 	scriptText := "#!/bin/bash\n#\n"
-	partition := kv.GetValue(kvs, SlurmPartitionKey)
+	partition := kv.GetValue(kvs, slurm.PartitionKey)
 	if partition != "" {
-		scriptText += slurmScriptCmdPrefix + " --partition=" + partition + "\n"
+		scriptText += slurm.ScriptCmdPrefix + " --partition=" + partition + "\n"
 	}
 
 	if j.NNodes > 0 {
-		scriptText += slurmScriptCmdPrefix + " --nodes=" + strconv.FormatInt(j.NNodes, 10) + "\n"
+		scriptText += slurm.ScriptCmdPrefix + " --nodes=" + strconv.FormatInt(j.NNodes, 10) + "\n"
 	}
 
 	if j.NP > 0 {
-		scriptText += slurmScriptCmdPrefix + " --ntasks=" + strconv.FormatInt(j.NP, 10) + "\n"
+		scriptText += slurm.ScriptCmdPrefix + " --ntasks=" + strconv.FormatInt(j.NP, 10) + "\n"
 	}
 
-	scriptText += slurmScriptCmdPrefix + " --error=" + getJobErrorFilePath(j, sysCfg) + "\n"
-	scriptText += slurmScriptCmdPrefix + " --output=" + getJobOutputFilePath(j, sysCfg) + "\n"
+	scriptText += slurm.ScriptCmdPrefix + " --error=" + getJobErrorFilePath(j, sysCfg) + "\n"
+	scriptText += slurm.ScriptCmdPrefix + " --output=" + getJobOutputFilePath(j, sysCfg) + "\n"
 
 	// Set PATH and LD_LIBRARY_PATH
-	scriptText += "\nexport PATH=" + j.HostCfg.InstallDir + "/bin:$PATH\n"
-	scriptText += "export LD_LIBRARY_PATH=" + j.HostCfg.InstallDir + "/lib:$LD_LIBRARY_PATH\n\n"
+	scriptText += "\nexport PATH=" + env.InstallDir + "/bin:$PATH\n"
+	scriptText += "export LD_LIBRARY_PATH=" + env.InstallDir + "/lib:$LD_LIBRARY_PATH\n\n"
 
 	// Add the mpirun command
-	mpirunPath := filepath.Join(j.HostCfg.InstallDir, "bin", "mpirun")
-	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, j.ContainerCfg)
+	mpirunPath := filepath.Join(env.InstallDir, "bin", "mpirun")
+	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, &j.App, j.Container, sysCfg)
 	if err != nil {
 		return fmt.Errorf("unable to get mpirun arguments: %s", err)
 	}
@@ -176,38 +206,40 @@ func generateJobScript(j *Job, sysCfg *sys.Config, kvs []kv.KV) error {
 // SlurmSubmit prepares the batch script necessary to start a given job.
 //
 // Note that a script does not need any specific environment to be submitted
-func SlurmSubmit(j *Job, sysCfg *sys.Config) (Launcher, error) {
-	var l Launcher
-	l.Cmd = "sbatch"
-	l.CmdArgs = append(l.CmdArgs, "-W") // We always wait until the submitted job terminates
+func SlurmSubmit(j *job.Job, hostBuildEnv *buildenv.Info, sysCfg *sys.Config) (syexec.SyCmd, error) {
+	var sycmd syexec.SyCmd
+	sycmd.BinPath = "sbatch"
+	sycmd.CmdArgs = append(sycmd.CmdArgs, "-W") // We always wait until the submitted job terminates
 
 	// Sanity checks
 	if j == nil {
-		return l, fmt.Errorf("job is undefined")
+		return sycmd, fmt.Errorf("job is undefined")
 	}
 
 	kvs, err := sy.LoadMPIConfigFile()
 	if err != nil {
-		return l, fmt.Errorf("unable to load configuration: %s", err)
+		return sycmd, fmt.Errorf("unable to load configuration: %s", err)
 	}
 
-	err = generateJobScript(j, sysCfg, kvs)
+	err = generateJobScript(j, hostBuildEnv, sysCfg, kvs)
 	if err != nil {
-		return l, fmt.Errorf("unable to generate Slurm script: %s", err)
+		return sycmd, fmt.Errorf("unable to generate Slurm script: %s", err)
 	}
-	l.CmdArgs = append(l.CmdArgs, j.BatchScript)
+	sycmd.CmdArgs = append(sycmd.CmdArgs, j.BatchScript)
 
 	j.GetOutput = SlurmGetOutput
 	j.GetError = SlurmGetError
 
-	return l, nil
+	return sycmd, nil
 }
 
+/*
 // SlurmCleanUp is the clean up function for Slurm
-func SlurmCleanUp(ctx context.Context, j Job) error {
+func SlurmCleanUp(ctx context.Context, j job.Job) error {
 	err := j.CleanUp()
 	if err != nil {
 		return fmt.Errorf("job cleanup failed: %s", err)
 	}
 	return nil
 }
+*/

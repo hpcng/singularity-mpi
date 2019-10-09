@@ -3,7 +3,7 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-package mpi
+package impi
 
 import (
 	"bytes"
@@ -14,6 +14,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
+	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
@@ -25,9 +29,32 @@ const (
 	intelUninstallConfFile         = "silent_uninstall.cfg"
 	intelInstallConfFileTemplate   = intelInstallConfFile + ".tmpl"
 	intelUninstallConfFileTemplate = intelUninstallConfFile + ".tmpl"
+
+	VersionTag           = "IMpiVersion"
+	TarballTag           = "IMPITARBALL"
+	DirTag               = "IMPIDIR" // todo: Should be removed
+	InstallConffileTag   = "IMPIINSTALLCONFFILE"
+	UninstallConffileTag = "IMPIUNINSTALLCONFFILE"
+	IfnetTag             = "NETWORKINTERFACE"
 )
 
-func updateIntelMPIDefFile(mpiCfg *Config, sysCfg *sys.Config) error {
+type Config struct {
+	DefFile string
+	Info    implem.Info
+}
+
+func GetDeffileTemplateTags() deffile.TemplateTags {
+	var tags deffile.TemplateTags
+	tags.Version = VersionTag
+	tags.Tarball = TarballTag
+	tags.Dir = DirTag
+	tags.InstallConffile = InstallConffileTag
+	tags.UninstallConffile = UninstallConffileTag
+	tags.Ifnet = IfnetTag
+	return tags
+}
+
+func updateIntelMPIDefFile(impiCfg *Config, env *buildenv.Info, sysCfg *sys.Config) error {
 	// Intel MPI is very special so we have IMPI-specific code and it is okay
 
 	// First we need to specialy prepare install & uninstall configuration file
@@ -38,21 +65,21 @@ func updateIntelMPIDefFile(mpiCfg *Config, sysCfg *sys.Config) error {
 		containerIMPIInstallDir = "/opt/impi"
 	)
 
-	if mpiCfg.tarball == "" {
-		mpiCfg.tarball = path.Base(mpiCfg.URL)
+	if impiCfg.Info.Tarball == "" {
+		impiCfg.Info.Tarball = path.Base(impiCfg.Info.URL)
 	}
 
 	// Sanity checks
-	if mpiCfg.MpiVersion == "" || mpiCfg.tarball == "" || mpiCfg.DefFile == "" {
+	if impiCfg.Info.Version == "" || impiCfg.Info.Tarball == "" || impiCfg.DefFile == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	// Copy the install & uninstall configuration file to the temporary directory used to build the container
 	// These install &uninstall configuation file will be used wihtin the container to install IMPI
 	srcInstallConfFile := filepath.Join(sysCfg.TemplateDir, "intel", intelInstallConfFileTemplate)
-	destInstallConfFile := filepath.Join(mpiCfg.BuildDir, intelInstallConfFile)
+	destInstallConfFile := filepath.Join(env.BuildDir, intelInstallConfFile)
 	srcUninstallConfFile := filepath.Join(sysCfg.TemplateDir, "intel", intelUninstallConfFileTemplate)
-	destUninstallConfFile := filepath.Join(mpiCfg.BuildDir, intelUninstallConfFile)
+	destUninstallConfFile := filepath.Join(env.BuildDir, intelUninstallConfFile)
 	err := util.CopyFile(srcInstallConfFile, destInstallConfFile)
 	if err != nil {
 		return fmt.Errorf("enable to copy %s to %s: %s", srcInstallConfFile, destInstallConfFile, err)
@@ -62,39 +89,39 @@ func updateIntelMPIDefFile(mpiCfg *Config, sysCfg *sys.Config) error {
 		return fmt.Errorf("enable to copy %s to %s: %s", srcUninstallConfFile, destUninstallConfFile, err)
 	}
 
-	err = updateIntelTemplate(destInstallConfFile, containerIMPIInstallDir)
+	err = updateTemplate(destInstallConfFile, containerIMPIInstallDir)
 	if err != nil {
 		return fmt.Errorf("unable to update IMPI template %s: %s", destInstallConfFile, err)
 	}
 
-	err = updateIntelTemplate(destUninstallConfFile, containerIMPIInstallDir)
+	err = updateTemplate(destUninstallConfFile, containerIMPIInstallDir)
 	if err != nil {
 		return fmt.Errorf("unable to update IMPI template %s: %s", destUninstallConfFile, err)
 	}
 
 	// Then we have to put together a valid def file
-	data, err := ioutil.ReadFile(mpiCfg.DefFile)
+	data, err := ioutil.ReadFile(impiCfg.DefFile)
 	if err != nil {
-		return fmt.Errorf("failed to read %s: %s", mpiCfg.DefFile, err)
+		return fmt.Errorf("failed to read %s: %s", impiCfg.DefFile, err)
 	}
 
 	content := string(data)
-	content = strings.Replace(content, "IMpiVersion", mpiCfg.MpiVersion, -1)
-	content = strings.Replace(content, "IMPITARBALL", mpiCfg.URL[7:], -1)
-	content = strings.Replace(content, "IMPIDIR", filepath.Join(containerIMPIInstallDir, mpiCfg.MpiVersion, IntelInstallPathPrefix), -1)
-	content = strings.Replace(content, "IMPIINSTALLCONFFILE", intelInstallConfFile, -1)
-	content = strings.Replace(content, "IMPIUNINSTALLCONFFILE", intelUninstallConfFile, -1)
-	content = strings.Replace(content, "NETWORKINTERFACE", sysCfg.Ifnet, -1)
+	content = strings.Replace(content, VersionTag, impiCfg.Info.Version, -1)
+	content = strings.Replace(content, TarballTag, impiCfg.Info.URL[7:], -1)
+	content = strings.Replace(content, DirTag, filepath.Join(containerIMPIInstallDir, impiCfg.Info.Version, IntelInstallPathPrefix), -1)
+	content = strings.Replace(content, InstallConffileTag, intelInstallConfFile, -1)
+	content = strings.Replace(content, UninstallConffileTag, intelUninstallConfFile, -1)
+	content = strings.Replace(content, IfnetTag, sysCfg.Ifnet, -1)
 
-	err = ioutil.WriteFile(mpiCfg.DefFile, []byte(content), 0)
+	err = ioutil.WriteFile(impiCfg.DefFile, []byte(content), 0)
 	if err != nil {
-		return fmt.Errorf("failed to write file %s: %s", mpiCfg.DefFile, err)
+		return fmt.Errorf("failed to write file %s: %s", impiCfg.DefFile, err)
 	}
 
 	return nil
 }
 
-func updateIntelTemplate(filepath string, destMPIInstall string) error {
+func updateTemplate(filepath string, destMPIInstall string) error {
 	data, err := ioutil.ReadFile(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %s", filepath, err)
@@ -109,21 +136,21 @@ func updateIntelTemplate(filepath string, destMPIInstall string) error {
 }
 
 // This function updated the Intel install/uninstall scripts for the installation on the host
-func updateIntelTemplates(mpiCfg *Config, sysCfg *sys.Config) error {
+func updateTemplates(env *buildenv.Info, sysCfg *sys.Config) error {
 	// Sanity checks
-	if mpiCfg.srcDir == "" || mpiCfg.BuildDir == "" {
+	if env.SrcDir == "" || env.BuildDir == "" {
 		return fmt.Errorf("Invalid parameter(s)")
 	}
 
-	intelSilentInstallConfig := filepath.Join(mpiCfg.srcDir, intelInstallConfFile)
-	intelSilentUninstallConfig := filepath.Join(mpiCfg.srcDir, intelUninstallConfFile)
+	intelSilentInstallConfig := filepath.Join(env.SrcDir, intelInstallConfFile)
+	intelSilentUninstallConfig := filepath.Join(env.SrcDir, intelUninstallConfFile)
 
-	err := updateIntelTemplate(intelSilentInstallConfig, mpiCfg.BuildDir)
+	err := updateTemplate(intelSilentInstallConfig, env.BuildDir)
 	if err != nil {
 		return fmt.Errorf("failed to update template %s: %s", intelSilentInstallConfig, err)
 	}
 
-	err = updateIntelTemplate(intelSilentUninstallConfig, mpiCfg.BuildDir)
+	err = updateTemplate(intelSilentUninstallConfig, env.BuildDir)
 	if err != nil {
 		return fmt.Errorf("failed to update template %s: %s", intelSilentUninstallConfig, err)
 	}
@@ -132,10 +159,10 @@ func updateIntelTemplates(mpiCfg *Config, sysCfg *sys.Config) error {
 }
 
 // SetupIntelInstallScript creates the install script for Intel MPI
-func SetupIntelInstallScript(mpiCfg *Config, sysCfg *sys.Config) error {
+func SetupInstallScript(env *buildenv.Info, sysCfg *sys.Config) error {
 	// Copy silent script templates to install Intel MPI
 	intelSilentInstallTemplate := filepath.Join(sysCfg.TemplateDir, "intel", intelInstallConfFileTemplate)
-	intelSilentInstallConfig := filepath.Join(mpiCfg.srcDir, intelInstallConfFile)
+	intelSilentInstallConfig := filepath.Join(env.SrcDir, intelInstallConfFile)
 	fmt.Printf("Copying %s to %s\n", intelSilentInstallTemplate, intelSilentInstallConfig)
 	err := util.CopyFile(intelSilentInstallTemplate, intelSilentInstallConfig)
 	if err != nil {
@@ -143,14 +170,14 @@ func SetupIntelInstallScript(mpiCfg *Config, sysCfg *sys.Config) error {
 	}
 
 	intelSilentUninstallTemplate := filepath.Join(sysCfg.TemplateDir, "intel", intelUninstallConfFileTemplate)
-	intelSilentUninstallConfig := filepath.Join(mpiCfg.srcDir, intelUninstallConfFile)
+	intelSilentUninstallConfig := filepath.Join(env.SrcDir, intelUninstallConfFile)
 	err = util.CopyFile(intelSilentUninstallTemplate, intelSilentUninstallConfig)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s: %s", intelSilentUninstallTemplate, intelSilentUninstallConfig, err)
 	}
 
 	// Update the templates
-	err = updateIntelTemplates(mpiCfg, sysCfg)
+	err = updateTemplates(env, sysCfg)
 	if err != nil {
 		return fmt.Errorf("unable to update Intel templates: %s", err)
 	}
@@ -158,9 +185,9 @@ func SetupIntelInstallScript(mpiCfg *Config, sysCfg *sys.Config) error {
 	return nil
 }
 
-func runIntelScript(mpiCfg *Config, sysCfg *sys.Config, phase string) ExecResult {
+func RunScript(env *buildenv.Info, sysCfg *sys.Config, phase string) syexec.Result {
 	var configFile string
-	var res ExecResult
+	var res syexec.Result
 
 	fmt.Printf("Running %s script...\n", phase)
 
@@ -177,17 +204,40 @@ func runIntelScript(mpiCfg *Config, sysCfg *sys.Config, phase string) ExecResult
 	// Run the install or uninstall script
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command("./install.sh", "--silent", configFile)
-	cmd.Dir = mpiCfg.srcDir
+	cmd.Dir = env.SrcDir
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
 	res.Err = cmd.Run()
-	/*
-		if err != nil {
-			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
-		}
-	*/
 	res.Stderr = stderr.String()
 	res.Stdout = stdout.String()
 
 	return res
 }
+
+// GetExtraMpirunArgs returns all the required additional arguments required to use
+// mpirun for a given configuration of MPI
+func IntelGetExtraMpirunArgs(mpiCfg *Config, sys *sys.Config) []string {
+	// Intel MPI is based on OFI so even for a simple TCP test, we need some extra arguments
+	return []string{"-env", "FI_PROVIDER", "socket", "-env", "I_MPI_FABRICS", "ofi"}
+}
+
+func IntelGetConfigureExtraArgs() []string {
+	return nil
+}
+
+func GetPathToMpirun(env *buildenv.Info) string {
+	return filepath.Join(env.BuildDir, IntelInstallPathPrefix, "bin/mpiexec")
+}
+
+/*
+func LoadIMPI() (bool, implem.Info) {
+	var impi Config
+	if impi.ID != IMPI {
+		return false, impi
+	}
+
+	impi.GetExtraMpirunArgs = IntelGetExtraMpirunArgs
+	impi.GetConfigureExtraArgs = IntelGetConfigureExtraArgs
+	return true, impi
+}
+*/

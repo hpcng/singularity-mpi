@@ -7,24 +7,18 @@ package sy
 
 import (
 	"bytes"
-	"context"
 	"encoding/gob"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"time"
-
-	"github.com/sylabs/singularity/pkg/syfs"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
+	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
+	"github.com/sylabs/singularity/pkg/syfs"
 )
 
 // MPIToolConfig is the structure hosting the data from the tool's configuration file (~/.singularity/singularity-mpi.conf)
@@ -37,103 +31,6 @@ const (
 	// BuildPrivilegeKey is the key used in the tool's configuration file to specify if the tool can create images on the platform
 	BuildPrivilegeKey = "build_privilege"
 )
-
-const (
-	// KeyPassphrase is the name of the environment variable used to specify the passphrase of the key to be used to sign images
-	KeyPassphrase = "SY_KEY_PASSPHRASE"
-
-	// KeyIndex is the index of the key to use to sign images
-	KeyIndex = "SY_KEY_INDEX"
-)
-
-// Pull retieves an image from the registry
-func Pull(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
-	var stdout, stderr bytes.Buffer
-
-	if sysCfg.SingularityBin == "" || mpiCfg.ContainerPath == "" || mpiCfg.ImageURL == "" || mpiCfg.BuildDir == "" {
-		return fmt.Errorf("invalid parameter(s)")
-	}
-
-	log.Printf("-> Pulling image: %s pull %s %s", sysCfg.SingularityBin, mpiCfg.ContainerPath, mpiCfg.ImageURL)
-
-	if sysCfg.Persistent != "" && util.PathExists(mpiCfg.ContainerPath) {
-		log.Printf("* Persistent mode, %s already available, skipping...", mpiCfg.ContainerPath)
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "pull", mpiCfg.ContainerPath, mpiCfg.ImageURL)
-	cmd.Dir = mpiCfg.BuildDir
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
-	}
-
-	return nil
-}
-
-// Sign signs a given image
-func Sign(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
-	var stdout, stderr bytes.Buffer
-
-	log.Printf("-> Signing container (%s)", mpiCfg.ContainerPath)
-	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
-	defer cancel()
-
-	indexIdx := "0"
-	if os.Getenv(KeyIndex) != "" {
-		indexIdx = os.Getenv(KeyIndex)
-	}
-
-	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "sign", "--keyidx", indexIdx, mpiCfg.ContainerPath)
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	go func() {
-		defer stdin.Close()
-		passphrase := os.Getenv(KeyPassphrase)
-		_, err := io.WriteString(stdin, passphrase)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
-	cmd.Dir = mpiCfg.BuildDir
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
-	}
-
-	return nil
-}
-
-// Upload uploads an image to a registry
-func Upload(mpiCfg *mpi.Config, sysCfg *sys.Config) error {
-	var stdout, stderr bytes.Buffer
-
-	log.Printf("-> Uploading container %s to %s", mpiCfg.ContainerPath, sysCfg.Registry)
-	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "push", mpiCfg.ContainerPath, sysCfg.Registry)
-	cmd.Dir = mpiCfg.BuildDir
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
-	}
-
-	return nil
-}
 
 // GetPathToSyMPIConfigFile returns the path to the tool's configuration file
 func GetPathToSyMPIConfigFile() string {
@@ -224,18 +121,18 @@ func ConfigFileUpdateEntry(configFile string, key string, value string) error {
 	return nil
 }
 
-func getRegistryConfigFilePath(mpiCfg *mpi.Config, sysCfg *sys.Config) string {
-	confFileName := mpiCfg.MpiImplm + "-images.conf"
+func getRegistryConfigFilePath(mpiCfg *implem.Info, sysCfg *sys.Config) string {
+	confFileName := mpiCfg.ID + "-images.conf"
 	return filepath.Join(sysCfg.EtcDir, confFileName)
 }
 
 // GetImageURL returns the URL to pull an image for a given distro/MPI/test
-func GetImageURL(mpiCfg *mpi.Config, sysCfg *sys.Config) string {
+func GetImageURL(mpiCfg *implem.Info, sysCfg *sys.Config) string {
 	registryConfigFile := getRegistryConfigFilePath(mpiCfg, sysCfg)
-	log.Printf("* Getting image URL for %s from %s...", mpiCfg.MpiImplm+"-"+mpiCfg.MpiVersion, registryConfigFile)
+	log.Printf("* Getting image URL for %s from %s...", mpiCfg.ID+"-"+mpiCfg.Version, registryConfigFile)
 	kvs, err := kv.LoadKeyValueConfig(registryConfigFile)
 	if err != nil {
 		return ""
 	}
-	return kv.GetValue(kvs, mpiCfg.MpiVersion)
+	return kv.GetValue(kvs, mpiCfg.Version)
 }

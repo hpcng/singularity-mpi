@@ -14,86 +14,22 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 // Result represents the result of a given experiment
 type Result struct {
-	Experiment mpi.Experiment
-	Pass       bool
-	Note       string
-}
-
-// Load reads a output file and load the list of experiments that are in the file
-func Load(outputFile string) ([]Result, error) {
-	var existingResults []Result
-
-	log.Println("Reading results from", outputFile)
-
-	f, err := os.Open(outputFile)
-	if err != nil {
-		// No result file, it is okay
-		return existingResults, nil
-	}
-	defer f.Close()
-
-	lineReader := bufio.NewScanner(f)
-	if lineReader == nil {
-		return existingResults, fmt.Errorf("failed to create file reader")
-	}
-
-	for lineReader.Scan() {
-		line := lineReader.Text()
-		words := strings.Split(line, "\t")
-		var newResult Result
-		if len(words) < 3 {
-			return existingResults, fmt.Errorf("invalid format: %s", line)
-		}
-		newResult.Experiment.VersionHostMPI = words[0]
-		newResult.Experiment.VersionContainerMPI = words[1]
-		result := words[2]
-		switch result {
-		case "PASS":
-			newResult.Pass = true
-		case "FAIL":
-			newResult.Pass = false
-		default:
-			return existingResults, fmt.Errorf("invalid experiment result: %s", result)
-		}
-		existingResults = append(existingResults, newResult)
-	}
-
-	return existingResults, nil
-}
-
-// Pruning removes the experiments for which we already have results
-func Pruning(experiments []mpi.Experiment, existingResults []Result) []mpi.Experiment {
-	// No optimization at the moment, double loop and creation of a new array
-	var experimentsToRun []mpi.Experiment
-	//	for j := 0; j < len(experiments); j++ {
-	for _, experiment := range experiments {
-		found := false
-		for _, result := range existingResults {
-			if experiment.VersionHostMPI == result.Experiment.VersionHostMPI && experiment.VersionContainerMPI == result.Experiment.VersionContainerMPI {
-				log.Printf("We already have results for %s on the host and %s in a container, skipping...\n", experiment.VersionHostMPI, experiment.VersionContainerMPI)
-				found = true
-				break
-			}
-		}
-		if !found {
-			// No associated results
-			experimentsToRun = append(experimentsToRun, experiment)
-		}
-	}
-
-	return experimentsToRun
+	HostMPI      implem.Info
+	ContainerMPI implem.Info
+	Pass         bool
+	Note         string
 }
 
 func lookupResult(r []Result, hostVersion string, containerVersion string) bool {
 	var i int
 	for i = 0; i < len(r); i++ {
-		if r[i].Experiment.VersionHostMPI == hostVersion && r[i].Experiment.VersionContainerMPI == containerVersion {
+		if r[i].HostMPI.Version == hostVersion && r[i].ContainerMPI.Version == containerVersion {
 			return r[i].Pass
 		}
 	}
@@ -128,14 +64,14 @@ func createCompatibilityMatrix(mpiImplem string, initFile string, netpipeFile st
 		if initResults[i].Pass {
 			passNetpipe := lookupResult(
 				netpipeResults,
-				initResults[i].Experiment.VersionHostMPI,
-				initResults[i].Experiment.VersionContainerMPI,
+				initResults[i].HostMPI.Version,
+				initResults[i].ContainerMPI.Version,
 			)
 			if passNetpipe {
 				passIMB := lookupResult(
 					imbResults,
-					initResults[i].Experiment.VersionHostMPI,
-					initResults[i].Experiment.VersionContainerMPI,
+					initResults[i].HostMPI.Version,
+					initResults[i].ContainerMPI.Version,
 				)
 				if passIMB {
 					testPassed = true
@@ -143,9 +79,9 @@ func createCompatibilityMatrix(mpiImplem string, initFile string, netpipeFile st
 			}
 		}
 
-		compatibilityResults += initResults[i].Experiment.VersionHostMPI +
+		compatibilityResults += initResults[i].HostMPI.Version +
 			"\t" +
-			initResults[i].Experiment.VersionContainerMPI +
+			initResults[i].ContainerMPI.Version +
 			"\t" +
 			strconv.FormatBool(testPassed) +
 			"\n"
@@ -174,4 +110,46 @@ func Analyse(mpiImplem string) {
 			log.Fatalf("Cannot create the compatibility matrix")
 		}
 	}
+}
+
+// Load reads a output file and load the list of experiments that are in the file
+func Load(outputFile string) ([]Result, error) {
+	var existingResults []Result
+
+	log.Println("Reading results from", outputFile)
+
+	f, err := os.Open(outputFile)
+	if err != nil {
+		// No result file, it is okay
+		return existingResults, nil
+	}
+	defer f.Close()
+
+	lineReader := bufio.NewScanner(f)
+	if lineReader == nil {
+		return existingResults, fmt.Errorf("failed to create file reader")
+	}
+
+	for lineReader.Scan() {
+		line := lineReader.Text()
+		words := strings.Split(line, "\t")
+		var newResult Result
+		if len(words) < 3 {
+			return existingResults, fmt.Errorf("invalid format: %s", line)
+		}
+		newResult.HostMPI.Version = words[0]
+		newResult.ContainerMPI.Version = words[1]
+		result := words[2]
+		switch result {
+		case "PASS":
+			newResult.Pass = true
+		case "FAIL":
+			newResult.Pass = false
+		default:
+			return existingResults, fmt.Errorf("invalid experiment result: %s", result)
+		}
+		existingResults = append(existingResults, newResult)
+	}
+
+	return existingResults, nil
 }

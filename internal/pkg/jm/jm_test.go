@@ -8,7 +8,9 @@ package jm
 import (
 	"testing"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/job"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
@@ -24,14 +26,11 @@ func TestDetect(t *testing.T) {
 }
 
 func TestTempFile(t *testing.T) {
-	var j Job
+	var j job.Job
 	var sysCfg sys.Config
-	var mpiCfg mpi.Config
+	var env buildenv.Info
 
-	j.ContainerCfg = &mpiCfg
-	j.HostCfg = &mpiCfg
-
-	err := TempFile(&j, &sysCfg)
+	err := TempFile(&j, &env, &sysCfg)
 	if err != nil {
 		t.Fatalf("unable to create temporary file: %s", err)
 	}

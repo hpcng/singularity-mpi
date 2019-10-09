@@ -15,35 +15,37 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/sylabs/singularity-mpi/pkg/containizer"
-
-	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
-	"github.com/sylabs/singularity-mpi/internal/pkg/results"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
+	"github.com/sylabs/singularity-mpi/internal/pkg/configparser"
+	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
+	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
+	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/network"
+	"github.com/sylabs/singularity-mpi/internal/pkg/results"
+	"github.com/sylabs/singularity-mpi/internal/pkg/slurm"
+	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
+	"github.com/sylabs/singularity-mpi/pkg/containizer"
+	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
 )
 
 const (
 	defaultUbuntuDistro = "disco"
 )
 
-func getListExperiments(config *cfg.Config) []mpi.Experiment {
-	var experiments []mpi.Experiment
+func getListExperiments(config *configparser.Config) []exp.Config {
+	var experiments []exp.Config
 	for mpi1, mpi1url := range config.MpiMap {
 		for mpi2, mpi2url := range config.MpiMap {
-			newExperiment := mpi.Experiment{
-				MPIImplm:            config.MPIImplem,
-				VersionHostMPI:      mpi1,
-				VersionContainerMPI: mpi2,
-				URLHostMPI:          mpi1url,
-				URLContainerMPI:     mpi2url,
-			}
+			var newExperiment exp.Config
+			newExperiment.HostMPI.Version = mpi1
+			newExperiment.HostMPI.URL = mpi1url
+			newExperiment.HostMPI.ID = config.MPIImplem
+			newExperiment.ContainerMPI.Version = mpi2
+			newExperiment.ContainerMPI.URL = mpi2url
+			newExperiment.ContainerMPI.ID = config.MPIImplem
 			experiments = append(experiments, newExperiment)
 		}
 	}
@@ -51,11 +53,12 @@ func getListExperiments(config *cfg.Config) []mpi.Experiment {
 	return experiments
 }
 
-func runExperiment(e mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (results.Result, error) {
+func runExperiment(e exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (results.Result, error) {
 	var expRes results.Result
-	var execRes mpi.ExecResult
+	var execRes syexec.Result
 
-	expRes.Experiment = e
+	expRes.HostMPI = e.HostMPI
+	expRes.ContainerMPI = e.ContainerMPI
 	expRes.Pass, expRes, execRes = exp.Run(e, sysCfg, syConfig)
 	if execRes.Err != nil {
 		return expRes, fmt.Errorf("failure during the execution of the experiment: %s", execRes.Err)
@@ -64,7 +67,7 @@ func runExperiment(e mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolCon
 	return expRes, nil
 }
 
-func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) []results.Result {
+func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) []results.Result {
 	var newResults []results.Result
 
 	/* Sanity checks */
@@ -86,7 +89,7 @@ func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolC
 
 		var i int
 		for i = 0; i < sysCfg.Nrun; i++ {
-			log.Printf("Running experiment %d/%d with host MPI %s and container MPI %s\n", i+1, sysCfg.Nrun, e.VersionHostMPI, e.VersionContainerMPI)
+			log.Printf("Running experiment %d/%d with host MPI %s and container MPI %s\n", i+1, sysCfg.Nrun, e.HostMPI.Version, e.ContainerMPI.Version)
 			newRes, err = runExperiment(e, sysCfg, syConfig)
 			if err != nil {
 				log.Fatalf("failure during the execution of experiment: %s", err)
@@ -105,13 +108,13 @@ func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolC
 		}
 
 		if failure {
-			_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tERROR\t" + newRes.Note + "\n")
+			_, err := f.WriteString(e.HostMPI.Version + "\t" + e.ContainerMPI.Version + "\tERROR\t" + newRes.Note + "\n")
 			if err != nil {
 				log.Fatalf("failed to write result: %s", err)
 			}
 		} else if !success {
 			log.Println("Experiment failed")
-			_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tFAIL\t" + newRes.Note + "\n")
+			_, err := f.WriteString(e.HostMPI.Version + "\t" + e.ContainerMPI.Version + "\tFAIL\t" + newRes.Note + "\n")
 			if err != nil {
 				log.Fatalf("failed to write result: %s", err)
 			}
@@ -121,7 +124,7 @@ func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolC
 			}
 		} else {
 			log.Println("Experiment succeeded")
-			_, err := f.WriteString(e.VersionHostMPI + "\t" + e.VersionContainerMPI + "\tPASS\t" + newRes.Note + "\n")
+			_, err := f.WriteString(e.HostMPI.Version + "\t" + e.ContainerMPI.Version + "\tPASS\t" + newRes.Note + "\n")
 			if err != nil {
 				log.Fatalf("failed to write result: %s", err)
 			}
@@ -135,7 +138,7 @@ func run(experiments []mpi.Experiment, sysCfg *sys.Config, syConfig *sy.MPIToolC
 	return newResults
 }
 
-func testMPI(mpiImplem string, experiments []mpi.Experiment, sysCfg sys.Config, syConfig sy.MPIToolConfig) error {
+func testMPI(mpiImplem string, experiments []exp.Config, sysCfg sys.Config, syConfig sy.MPIToolConfig) error {
 	// If the user did not specify an output file, we try to implicitly
 	// set a relevant name
 	if sysCfg.OutputFile == "" {
@@ -160,6 +163,7 @@ func testMPI(mpiImplem string, experiments []mpi.Experiment, sysCfg sys.Config, 
 	log.Println("Output file:", sysCfg.OutputFile)
 	log.Println("Running NetPipe:", strconv.FormatBool(sysCfg.NetPipe))
 	log.Println("Debug mode:", sysCfg.Debug)
+	log.Println("Persistent installs:", sysCfg.Persistent)
 
 	// Load the results we already have in result file
 	existingResults, err := results.Load(sysCfg.OutputFile)
@@ -168,7 +172,7 @@ func testMPI(mpiImplem string, experiments []mpi.Experiment, sysCfg sys.Config, 
 	}
 
 	// Remove the results we already have from list of experiments to run
-	experimentsToRun := results.Pruning(experiments, existingResults)
+	experimentsToRun := exp.Pruning(experiments, existingResults)
 
 	// Run the experiments
 	if len(experimentsToRun) > 0 {
@@ -180,24 +184,54 @@ func testMPI(mpiImplem string, experiments []mpi.Experiment, sysCfg sys.Config, 
 	return nil
 }
 
-func main() {
-	var sysCfg sys.Config
+func load() (sys.Config, jm.JM, network.Info, error) {
+	var cfg sys.Config
+	var jobmgr jm.JM
+	var net network.Info
 
 	/* Figure out the directory of this binary */
 	bin, err := os.Executable()
 	if err != nil {
-		log.Fatal("cannot detect the directory of the binary")
+		return cfg, jobmgr, net, fmt.Errorf("cannot detect the directory of the binary")
+	}
+	cfg.BinPath = filepath.Dir(bin)
+	cfg.EtcDir = filepath.Join(cfg.BinPath, "etc")
+	cfg.TemplateDir = filepath.Join(cfg.EtcDir, "templates")
+	cfg.OfiCfgFile = filepath.Join(cfg.EtcDir, "ofi.conf")
+	cfg.CurPath, err = os.Getwd()
+	if err != nil {
+		return cfg, jobmgr, net, fmt.Errorf("cannot detect current directory")
+	}
+	cfg.SyConfigFile = sy.GetPathToSyMPIConfigFile()
+	kvs, err := kv.LoadKeyValueConfig(cfg.SyConfigFile)
+	if err != nil {
+		return cfg, jobmgr, net, fmt.Errorf("unable to load the tool's configuration: %s", err)
+	}
+	if kv.GetValue(kvs, slurm.EnabledKey) != "" {
+		cfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, slurm.EnabledKey))
+		if err != nil {
+			log.Fatalf("failed to load the Slurm configuration: %s", err)
+		}
 	}
 
-	sysCfg.BinPath = filepath.Dir(bin)
-	sysCfg.EtcDir = filepath.Join(sysCfg.BinPath, "etc")
-	sysCfg.TemplateDir = filepath.Join(sysCfg.EtcDir, "templates")
-	sysCfg.OfiCfgFile = filepath.Join(sysCfg.EtcDir, "ofi.conf")
-
-	/* Figure out the current path */
-	sysCfg.CurPath, err = os.Getwd()
+	// Load the job manager component first
+	jobmgr = jm.Detect()
+	err = jobmgr.Load(&jobmgr, &cfg)
 	if err != nil {
-		log.Fatal("cannot detect current directory")
+		return cfg, jobmgr, net, fmt.Errorf("unable to load a job manager")
+	}
+
+	// Load the network configuration
+	net = network.Detect()
+
+	return cfg, jobmgr, net, nil
+}
+
+func main() {
+	sysCfg, _, _, err := load()
+	if err != nil {
+		log.Fatalf("unable to load configuration: %s", err)
+
 	}
 
 	/* Argument parsing */
@@ -243,14 +277,6 @@ func main() {
 	syConfig.BuildPrivilege, err = strconv.ParseBool(kv.GetValue(kvs, sy.BuildPrivilegeKey))
 	if err != nil {
 		log.Fatalf("failed to load the tool's configuration: %s", err)
-	}
-
-	// Load more system configuration details from the singularity-mpi.conf file
-	if kv.GetValue(kvs, sys.SlurmEnabledKey) != "" {
-		sysCfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, sys.SlurmEnabledKey))
-		if err != nil {
-			log.Fatalf("failed to load the Slurm configuration: %s", err)
-		}
 	}
 
 	// Figure out all the experiments that need to be executed
@@ -302,7 +328,7 @@ func main() {
 
 	// Run the requested tool capability
 	if sysCfg.AppContainizer != "" {
-		err := containizer.ContainerizeApp(&sysCfg)
+		_, err := containizer.ContainerizeApp(&sysCfg)
 		if err != nil {
 			log.Fatalf("failed to create container for app: %s", err)
 		}

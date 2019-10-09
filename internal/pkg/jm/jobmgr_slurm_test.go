@@ -10,42 +10,40 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/job"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
 func TestSlurmSubmit(t *testing.T) {
 	failed := false
 
-	loaded, _ := LoadSlurm()
+	loaded, _ := SlurmDetect()
 	if !loaded {
 		t.Skip("slurm cannot be used on this platform")
 	}
 
-	var job Job
+	var job job.Job
 	var sysCfg sys.Config
-	var mpiCfg mpi.Config
-	job.ContainerCfg = &mpiCfg
-	job.HostCfg = &mpiCfg
+	var env buildenv.Info
 	installDir, err := ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("failed to create temporary directory: %s", err)
 	}
 	defer os.RemoveAll(installDir)
-	job.HostCfg.InstallDir = installDir
 	sysCfg.ScratchDir, err = ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("unable to create scratch directory: %s", err)
 	}
 	defer os.RemoveAll(sysCfg.ScratchDir)
 
-	launcher, err := SlurmSubmit(&job, &sysCfg)
+	launcher, err := SlurmSubmit(&job, &env, &sysCfg)
 	if err != nil {
 		t.Fatalf("test failed: %s", err)
 	}
 
-	if launcher.Cmd != "sbatch" {
+	if launcher.BinPath != "sbatch" {
 		failed = true
 		t.Logf("wrong launcher returned")
 	}

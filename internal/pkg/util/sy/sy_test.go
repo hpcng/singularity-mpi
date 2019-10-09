@@ -17,8 +17,8 @@ func TestGetImageURL(t *testing.T) {
 	var mpiCfg mpi.Config
 	var sysCfg sys.Config
 
-	mpiCfg.MpiImplm = mpi.OpenMPI
-	mpiCfg.MpiVersion = "4.0.0"
+	mpiCfg.Implem.ID = mpi.OpenMPI
+	mpiCfg.Implem.Version = "4.0.0"
 
 	url := GetImageURL(&mpiCfg, &sysCfg)
 	if url == "" {

@@ -3,4 +3,8 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-package mpi
+package app
+
+type Info struct {
+	BinPath string
+}
