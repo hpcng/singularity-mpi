@@ -33,7 +33,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 )
 
-// Experiment is a structure that represents the configuration of an experiment
+// Config is a structure that represents the configuration of an experiment
 type Config struct {
 	HostMPI      implem.Info
 	ContainerMPI implem.Info

@@ -25,6 +25,7 @@ const (
 	FormatTAR = "tar"
 )
 
+// PathExists checks whether a given path exists
 func PathExists(path string) bool {
 	_, err := os.Stat(path)
 	if os.IsNotExist(err) {

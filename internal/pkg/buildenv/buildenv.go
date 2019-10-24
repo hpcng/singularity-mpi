@@ -19,15 +19,19 @@ import (
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
+// Info gathers the details of the build environment
 type Info struct {
 	// SrcPath is the path to the downloaded tarball
 	SrcPath string
 	// SrcDir is the directory where the source code is
 	SrcDir     string
+	// InstallDir is the directory where the software needs to be installed
 	InstallDir string
+	// BuildDir is the directory where the software is built
 	BuildDir   string
 }
 
+// Unpack extracts the source code from a package/tarball/zip file.
 func (env *Info) Unpack() error {
 	log.Println("- Unpacking MPI...")
 
@@ -85,6 +89,7 @@ func (env *Info) Unpack() error {
 	return nil
 }
 
+// RunMake executes the appropriate command to build the software
 func (env *Info) RunMake(stage string) error {
 	// Some sanity checks
 	if env.SrcDir == "" {
@@ -135,6 +140,7 @@ func (env *Info) copyTarball(mpiCfg *implem.Info) error {
 	return nil
 }
 
+// Get is the function to get a given source code
 func (env *Info) Get(mpiCfg *implem.Info) error {
 	log.Println("- Getting MPI...")
 

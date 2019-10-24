@@ -15,8 +15,10 @@ import (
 // Config represents the configuration of the tests to run
 type Config struct {
 	filename  string
-	MPIImplem string            // Reference the MPI implementation, e.g., Open MPI, MPICH
-	MpiMap    map[string]string // store the URL to download a specific version, the key being the version
+	// MPIImplem provides the MPI implementation details
+	MPIImplem string
+	// MpiMap stores the URL to download a specific version, the key being the version
+	MpiMap    map[string]string 
 }
 
 func detectOpenMPIVersion(line string) string {

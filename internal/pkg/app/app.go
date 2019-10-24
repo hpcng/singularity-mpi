@@ -5,6 +5,7 @@
 
 package app
 
+// Info gathers information about a given application
 type Info struct {
 	BinPath string
 }

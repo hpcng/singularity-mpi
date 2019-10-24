@@ -31,19 +31,27 @@ const (
 	KeyIndex = "SY_KEY_INDEX"
 )
 
+// Config is a structure representing a container
 type Config struct {
+	// Name of the container
 	Name string
 
+	// Path to the container's image
 	Path string
 
+	// BuildDir is the path to the directory from where the image must be built
 	BuildDir string
 
+	// InstallDir is the directory where the container needs to be stored
 	InstallDir string
 
+	// DefFile is the path to the definition file associated to the container
 	DefFile string
 
+	// Distro is the ID of the Linux distribution to use in the container
 	Distro string
 
+	// URL is the URL of the container image to use when pulling the image from a registry
 	URL string
 }
 
@@ -104,6 +112,7 @@ func Create(container *Config, sysCfg *sys.Config) error {
 	return nil
 }
 
+// PullContainerImage pulls from a registry the appropriate image
 func PullContainerImage(cfg *Config, mpiImplm *implem.Info, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) error {
 	// Sanity checks
 	if cfg.URL == "" {

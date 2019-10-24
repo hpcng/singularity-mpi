@@ -13,5 +13,6 @@ const (
 	// EnabledKey is the key used in the singularity-mpi.conf file to specify if Slurm shall be used
 	EnabledKey = "enable_slurm"
 
+	// ScriptCmdPrefix is the prefix to add to a script
 	ScriptCmdPrefix = "#SBATCH"
 )

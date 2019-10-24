@@ -84,6 +84,7 @@ func SlurmSetConfig() error {
 	return nil
 }
 
+// SlurmLoad is the function called when trying to load a JM module
 func SlurmLoad(jm *JM, sysCfg *sys.Config) error {
 	log.Println("* Slurm detected, updating the configuration file")
 	kvs, err := kv.LoadKeyValueConfig(sysCfg.SyConfigFile)
@@ -232,14 +233,3 @@ func SlurmSubmit(j *job.Job, hostBuildEnv *buildenv.Info, sysCfg *sys.Config) (s
 
 	return sycmd, nil
 }
-
-/*
-// SlurmCleanUp is the clean up function for Slurm
-func SlurmCleanUp(ctx context.Context, j job.Job) error {
-	err := j.CleanUp()
-	if err != nil {
-		return fmt.Errorf("job cleanup failed: %s", err)
-	}
-	return nil
-}
-*/

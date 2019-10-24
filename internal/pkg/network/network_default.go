@@ -9,6 +9,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
+// LoadDefault is the function called to load the default component for networking
 func LoadDefault(sysCfg *sys.Config) (bool, Info) {
 	var network Info
 	network.ID = Default

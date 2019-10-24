@@ -22,10 +22,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
-//type GetMpirunExtraArgsFn func(*implem.Info, *jm.JM) []string
-
-// launcher represents the details to start a jon
-
+// Info gathers all the details to start a job
 type Info struct {
 	Cmd syexec.SyCmd
 

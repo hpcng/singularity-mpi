@@ -24,6 +24,7 @@ type GetOutputFn func(*Job, *sys.Config) string
 // GetErrorFn is a "function pointer" to call to gather stderr from an application after completion of a job
 type GetErrorFn func(*Job, *sys.Config) string
 
+// Job represents a job
 type Job struct {
 	// NP is the number of ranks
 	NP int64

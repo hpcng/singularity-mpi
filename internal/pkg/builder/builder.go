@@ -56,47 +56,6 @@ func GenericConfigure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string
 	return nil
 }
 
-/*
-func (b *Builder) Configure(mpiCfg *implem.Info, sysCfg *sys.Config, extraArgs []string) error {
-	log.Printf("- Configuring MPI for installation in %s...", env.InstallDir)
-
-	// Some sanity checks
-	if env.SrcDir == "" || env.InstallDir == "" {
-		return fmt.Errorf("invalid parameter(s)")
-	}
-
-	// If the source code does not have a configure file, we simply skip the step
-	var cmdStr string
-	if mpiCfg.MPIImplm != "openmpi" {
-		configurePath := filepath.Join(mpiCfg.srcDir, "configure")
-		if !util.FileExists(configurePath) {
-			fmt.Printf("-> %s does not exist, skipping the configuration step\n", configurePath)
-			return nil
-		}
-		cmdStr := "./configure --prefix=" + mpiCfg.InstallDir
-	} else {
-		cmdStr = configureOpenMPI(mpiCfg, sysCfg)
-	}
-
-	var stdout, stderr bytes.Buffer
-	log.Printf("* Executing %s (from %s)", cmdStr, mpiCfg.srcDir)
-	cmd := exec.Command("./configure", "--prefix="+mpiCfg.InstallDir)
-	cmd.Dir = mpiCfg.srcDir
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stdout
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
-	}
-	err = builder.Configure(env, sysCfg, extraArgs)
-	if err != nil {
-		return fmt.Errorf("unable to configure MPI: %s", err)
-	}
-
-	return nil
-}
-*/
-
 func (b *Builder) compile(mpiCfg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
 	var res syexec.Result
 
@@ -215,6 +174,7 @@ func (b *Builder) UninstallHost(mpiCfg *implem.Info, env *buildenv.Info, sysCfg 
 	return res
 }
 
+// Load is the function that will figure out the function to call for various stages of the code configuration/compilation/installation/execution
 func Load(mpiCfg *implem.Info) (Builder, error) {
 	var builder Builder
 	builder.Configure = GenericConfigure
@@ -302,28 +262,6 @@ func (b *Builder) GenerateDeffile(mpiCfg *implem.Info, env *buildenv.Info, conta
 	if err != nil {
 		return fmt.Errorf("unable to generate definition file from template: %s", err)
 	}
-
-	/*
-		switch mpiCfg.ID {
-		case implem.OMPI:
-			err := openmpi.UpdateDefFile(mpiCfg, sysCfg)
-			if err != nil {
-				return fmt.Errorf("failed to update OMPI template: %s", err)
-			}
-		case implem.MPICH:
-			err := updateMPICHDefFile(mpiCfg, sysCfg)
-			if err != nil {
-				return fmt.Errorf("failed to update MPICH template: %s", err)
-			}
-		case implem.IMPI:
-			err := updateIntelMPIDefFile(mpiCfg, sysCfg)
-			if err != nil {
-				return fmt.Errorf("failed to update IMPI template: %s", err)
-			}
-		default:
-			return fmt.Errorf("unsupported MPI implementation: %s", mpiCfg.Implem.ID)
-		}
-	*/
 
 	// In debug mode, we save the def file that was generated to the scratch directory
 	if sysCfg.Debug {

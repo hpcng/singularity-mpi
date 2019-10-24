@@ -24,25 +24,37 @@ import (
 
 // Constants related to Intel MPI
 const (
+	// IntelInstallPathPrefix is the prefix to use when referring to the installation directory for Intel MPI
 	IntelInstallPathPrefix         = "compilers_and_libraries/linux/mpi/intel64"
+
 	intelInstallConfFile           = "silent_install.cfg"
 	intelUninstallConfFile         = "silent_uninstall.cfg"
 	intelInstallConfFileTemplate   = intelInstallConfFile + ".tmpl"
 	intelUninstallConfFileTemplate = intelUninstallConfFile + ".tmpl"
 
+	// VersionTag is the tag used to refer to the MPI version in the IMPI template(s)
 	VersionTag           = "IMpiVersion"
+	// TarballTag is the tag used to refer to the tarball of IMPI in the IMPI template(s)
 	TarballTag           = "IMPITARBALL"
+	// DirTag is the tag used to refer to the directory where IMPI is installed
 	DirTag               = "IMPIDIR" // todo: Should be removed
+	// InstallConffileTag is the tag used to refer to the path for the script to use to install IMPI
 	InstallConffileTag   = "IMPIINSTALLCONFFILE"
+	// UninstallConffileTag is the tag used to refer to the path for the script to use to uninstall IMPI
 	UninstallConffileTag = "IMPIUNINSTALLCONFFILE"
+	// IfnetTag is the tag used to refer to the network interface in the IMPI template(s)
 	IfnetTag             = "NETWORKINTERFACE"
 )
 
+// Config represents a configuration of Intel MPI
 type Config struct {
+	// DefFile is the path to the definition file for a IMPI based container
 	DefFile string
+	// Info gathers all the information about the version of IMPI to use
 	Info    implem.Info
 }
 
+// GetDeffileTemplateTags returns all the tags used in IMPI template files
 func GetDeffileTemplateTags() deffile.TemplateTags {
 	var tags deffile.TemplateTags
 	tags.Version = VersionTag
@@ -135,7 +147,7 @@ func updateTemplate(filepath string, destMPIInstall string) error {
 	return nil
 }
 
-// This function updated the Intel install/uninstall scripts for the installation on the host
+// updateTemplates updates the Intel install/uninstall scripts for the installation on the host
 func updateTemplates(env *buildenv.Info, sysCfg *sys.Config) error {
 	// Sanity checks
 	if env.SrcDir == "" || env.BuildDir == "" {
@@ -185,6 +197,7 @@ func SetupInstallScript(env *buildenv.Info, sysCfg *sys.Config) error {
 	return nil
 }
 
+// RunScript executes a install/uninstall script
 func RunScript(env *buildenv.Info, sysCfg *sys.Config, phase string) syexec.Result {
 	var configFile string
 	var res syexec.Result
@@ -221,23 +234,12 @@ func IntelGetExtraMpirunArgs(mpiCfg *Config, sys *sys.Config) []string {
 	return []string{"-env", "FI_PROVIDER", "socket", "-env", "I_MPI_FABRICS", "ofi"}
 }
 
+// IntelGetConfigureExtraArgs returns the extra arguments required to configure IMPI
 func IntelGetConfigureExtraArgs() []string {
 	return nil
 }
 
+// GetPathToMpirun returns the path to mpirun when using IMPI
 func GetPathToMpirun(env *buildenv.Info) string {
 	return filepath.Join(env.BuildDir, IntelInstallPathPrefix, "bin/mpiexec")
 }
-
-/*
-func LoadIMPI() (bool, implem.Info) {
-	var impi Config
-	if impi.ID != IMPI {
-		return false, impi
-	}
-
-	impi.GetExtraMpirunArgs = IntelGetExtraMpirunArgs
-	impi.GetConfigureExtraArgs = IntelGetConfigureExtraArgs
-	return true, impi
-}
-*/

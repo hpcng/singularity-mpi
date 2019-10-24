@@ -23,16 +23,25 @@ const (
 	distroCodenameTag = "DISTROCODENAME"
 )
 
+// TemplateTags gathers all the data related to a given template
 type TemplateTags struct {
+	// Verion is the version of the MPI implementation tag
 	Version           string
+	// Tarball is the tag used to refer to the MPI implementation tarball
 	Tarball           string
+	// URL is the tag used to refer to the URL to be used to download MPI
 	URL               string
+	// Dir is the tag to be used to refer to the directory where MPI is installed
 	Dir               string // todo: Should be removed
+	// InstallConfFile is the tag used to specify where the installation configuration file is assumed to be in the image
 	InstallConffile   string
+	// UninstallConfFile is the tag used to specify where the uninstallation configuration file is assumed to be in the image
 	UninstallConffile string
+	// Ifnet is the tag referring to the network interface to be used
 	Ifnet             string
 }
 
+// DefFileData is all the data associated to a definition file
 type DefFileData struct {
 	// Path is the path to the definition file
 	Path string
@@ -119,6 +128,7 @@ func AddBootstrap(f *os.File, deffile *DefFileData) error {
 	return nil
 }
 
+// AddMPIInstall adds all the data to the definition file related to the installation of MPI
 func AddMPIInstall(f *os.File, deffile *DefFileData) error {
 	mpitarball := path.Base(deffile.MpiImplm.URL)
 	tarballFormat := util.DetectTarballFormat(mpitarball)
@@ -141,6 +151,7 @@ func AddMPIInstall(f *os.File, deffile *DefFileData) error {
 	return nil
 }
 
+// AddMPIEnv adds all the data to the definition file to specify the environment of the MPI installation in the container
 func AddMPIEnv(f *os.File, deffile *DefFileData) error {
 	deffile.InternalEnv.InstallDir = setMPIInstallDir(deffile.MpiImplm.ID, deffile.MpiImplm.Version)
 
@@ -177,11 +188,12 @@ func AddMPIEnv(f *os.File, deffile *DefFileData) error {
 	return nil
 }
 
-// UpdateDefFileDistroCodename replace the tag for the distro codename in a definition file by the actual target distro codename
+// UpdateDefFileDistroCodename replaces the tag for the distro codename in a definition file by the actual target distro codename
 func UpdateDistroCodename(data, distro string) string {
 	return strings.Replace(data, distroCodenameTag, distro, -1)
 }
 
+// UpdateDeffileTemplate update a template file and create a usable definition file
 func UpdateDeffileTemplate(data DefFileData, sysCfg *sys.Config) error {
 	// Sanity checks
 	if data.MpiImplm.Version == "" || data.MpiImplm.URL == "" ||

@@ -10,34 +10,27 @@ import (
 )
 
 const (
+	// VersionTag is the tag used to refer to the MPI version in MPICH template(s)
 	VersionTag = "MPICHVERSION"
+	// URLTag is the tag used to refer to the MPI URL in MPICH template(s)
 	URLTag     = "MPICHURL"
+	// TarballTag is the tag used to refer to the MPI tarball in MPICH template(s)
 	TarballTag = "MPICHTARBALL"
 )
 
-/*
-func updateMPICHDefFile(myCfg *Config, sysCfg *sys.Config) error {
-	var compileCfg compileConfig
-
-	err := updateDeffile(myCfg, sysCfg, &compileCfg)
-	if err != nil {
-		return fmt.Errorf("failed to update MPICH definition file: %s", err)
-	}
-
-	return nil
-}
-*/
-
+// MPICHGetExtraMpirunArgs returns the extra mpirun arguments required by MPICH for a specific configuration
 func MPICHGetExtraMpirunArgs() []string {
 	var extraArgs []string
 	return extraArgs
 }
 
+// MPICHGetConfigureExtraArgs returns the extra arguments required to configure MPICH
 func MPICHGetConfigureExtraArgs() []string {
 	var extraArgs []string
 	return extraArgs
 }
 
+// GetDeffileTemplateTags returns the tags used on the MPICH template(s)
 func GetDeffileTemplateTags() deffile.TemplateTags {
 	var tags deffile.TemplateTags
 	tags.Tarball = TarballTag
@@ -46,14 +39,3 @@ func GetDeffileTemplateTags() deffile.TemplateTags {
 	return tags
 }
 
-/*
-func LoadMPICH(cfg *Config) (bool, Implementation) {
-	var mpich Implementation
-	if cfg.Implem.ID != MPICH {
-		return false, mpich
-	}
-	cfg.Implem.GetExtraMpirunArgs = MPICHGetExtraMpirunArgs
-	cfg.Implem.GetConfigureExtraArgs = MPICHGetConfigureExtraArgs
-	return true, mpich
-}
-*/

@@ -26,6 +26,7 @@ const (
 	TarballTag = "OMPITARBALL"
 )
 
+// Configure executes the appropriate command to configure Open MPI on the target platform
 func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error {
 	var ac autotools.Config
 
@@ -41,6 +42,7 @@ func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error
 	return nil
 }
 
+// GetExtraMpirunArgs returns the set of arguments required for the mpirun command for the target platform
 func GetExtraMpirunArgs(sys *sys.Config) []string {
 	var extraArgs []string
 	/*
@@ -54,6 +56,7 @@ func GetExtraMpirunArgs(sys *sys.Config) []string {
 	return extraArgs
 }
 
+// GetExtraConfigureArgs returns the set of arguments required for configure to configure Open MPI on the target platform
 func GetExtraConfigureArgs(sysCfg *sys.Config) []string {
 	var extraArgs []string
 	if sysCfg.SlurmEnabled {
@@ -85,6 +88,7 @@ func GetExtraConfigureArgs(sysCfg *sys.Config) []string {
 	return extraArgs
 }
 
+// GetDeffileTemplateTags returns the tag names used by Open MPI in its template
 func GetDeffileTemplateTags() deffile.TemplateTags {
 	var tags deffile.TemplateTags
 	tags.Version = VersionTag
@@ -92,14 +96,3 @@ func GetDeffileTemplateTags() deffile.TemplateTags {
 	tags.Tarball = TarballTag
 	return tags
 }
-
-/*
-func LoadOpenMPI(cfg implem.Info) (bool, builder.Config) {
-	var builder builder.Config
-	if cfg.ID != ID {
-		return false, builder
-	}
-	builder.GetExtraMpirunArgs = OMPIGetExtraMpirunArgs
-	return true, builder
-}
-*/

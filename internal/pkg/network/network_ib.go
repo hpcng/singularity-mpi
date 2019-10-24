@@ -23,6 +23,7 @@ const (
 	KNEMDirKey = "knem_dir"
 )
 
+// LoadInfiniband is the function called to load the IB component
 func LoadInfiniband(sysCfg *sys.Config) (bool, Info) {
 	var ib Info
 
@@ -62,6 +63,7 @@ func LoadInfiniband(sysCfg *sys.Config) (bool, Info) {
 	return true, ib
 }
 
+// IBSave saves the IB configuration on the system into the tool's configuration file.
 func IBSave(sysCfg *sys.Config) error {
 	err := sy.ConfigFileUpdateEntry(sy.GetPathToSyMPIConfigFile(), IBForceKey, strconv.FormatBool(sysCfg.IBEnabled))
 	if err != nil {

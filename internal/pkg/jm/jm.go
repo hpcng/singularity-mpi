@@ -29,15 +29,6 @@ const (
 	SlurmID = "slurm"
 )
 
-/*
-type SubmitCmd struct {
-
-
-	// Env is the environment to append when executing the command
-	Env []string
-}
-*/
-
 // Loader checks whether a giv job manager is applicable or not
 type Loader interface {
 	Load() bool
@@ -90,6 +81,7 @@ func Detect() JM {
 	return comp
 }
 
+// Load is the function to use to load the JM component
 func Load(jm *JM) error {
 	return nil
 }

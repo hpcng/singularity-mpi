@@ -20,12 +20,18 @@ type Result struct {
 	Stderr string
 }
 
+// SyCmd represents a command to be executed
 type SyCmd struct {
 	// Cmd represents the command to execute to submit the job
 	Cmd *exec.Cmd
 
+	// BinPath is the path to the binary to execute
 	BinPath string
+
+	// CmdArgs is a slice of string representing the command's arguments
 	CmdArgs []string
+
+	// Env is a slice of string representing the environment to be used with the command
 	Env     []string
 
 	// Ctx is the context of the command to execute to submit a job
