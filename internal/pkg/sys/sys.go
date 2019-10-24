@@ -5,8 +5,6 @@
 
 package sys
 
-import "github.com/sylabs/singularity-mpi/internal/pkg/network"
-
 // SetConfigFn is a "function pointer" that lets us store the configuration of a given job manager
 type SetConfigFn func() error
 
@@ -58,12 +56,12 @@ type Config struct {
 	Upload bool
 	// Persistent specifies whether we need to keep the installed software (MPI and containers)
 	Persistent string
-	// slurmEnable specifies whether Slurm is currently enabled
+	// SlurmEnable specifies whether Slurm is currently enabled
 	SlurmEnabled bool
+	// IBEnables specifies whether Infiniband is currently enabled
+	IBEnabled bool
 	// SyConfigFile
 	SyConfigFile string
-	// Net stores details about the network configuration
-	Network network.Info
 }
 
 const (

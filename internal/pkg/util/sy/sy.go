@@ -6,12 +6,11 @@
 package sy
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"path/filepath"
+	"strings"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
@@ -38,13 +37,8 @@ func GetPathToSyMPIConfigFile() string {
 }
 
 func saveMPIConfigFile(path string, data []string) error {
-	buffer := &bytes.Buffer{}
-	err := gob.NewEncoder(buffer).Encode(data)
-	if err != nil {
-		return fmt.Errorf("unable to convert configuration data: %s", err)
-	}
-	d := buffer.Bytes()
-	err = ioutil.WriteFile(path, d, 0644)
+	text := strings.Join(data, "\n")
+	err := ioutil.WriteFile(path, []byte(text), 0644)
 	if err != nil {
 		return fmt.Errorf("Impossible to create configuration file %s :%s", path, err)
 	}
@@ -57,7 +51,7 @@ func initMPIConfigFile() ([]string, error) {
 	err := checker.CheckBuildPrivilege()
 	if err != nil {
 		log.Printf("* [INFO] Cannot build singularity images: %s", err)
-		buildPrivilegeEntry = BuildPrivilegeKey + " = false\n"
+		buildPrivilegeEntry = BuildPrivilegeKey + " = false"
 	}
 
 	data := []string{buildPrivilegeEntry}
@@ -107,9 +101,24 @@ func ConfigFileUpdateEntry(configFile string, key string, value string) error {
 		return fmt.Errorf("unable to laod MPI configuration file: %s", err)
 	}
 
-	if kv.GetValue(kvs, key) == value {
+	// If the key is already correctly set, we just exit
+	currentVal := kv.GetValue(kvs, key)
+	if currentVal == value {
 		log.Printf("Key %s from %s already set to %s", key, configFile, value)
 		return nil
+	}
+
+	// If the key does not exist, we create one
+	if !kv.KeyExists(kvs, key) {
+		var newKV kv.KV
+		newKV.Key = key
+		newKV.Value = value
+		kvs = append(kvs, newKV)
+	} else {
+		err = kv.SetValue(kvs, key, value)
+		if err != nil {
+			return fmt.Errorf("failed to update value of the key %s: %s", key, err)
+		}
 	}
 
 	data := kv.ToStringSlice(kvs)

@@ -5,7 +5,11 @@
 
 package network
 
-func LoadDefault() (bool, Info) {
+import (
+	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+)
+
+func LoadDefault(sysCfg *sys.Config) (bool, Info) {
 	var network Info
 	network.ID = Default
 

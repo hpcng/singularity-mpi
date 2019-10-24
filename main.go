@@ -202,16 +202,26 @@ func load() (sys.Config, jm.JM, network.Info, error) {
 	if err != nil {
 		return cfg, jobmgr, net, fmt.Errorf("cannot detect current directory")
 	}
+
 	cfg.SyConfigFile = sy.GetPathToSyMPIConfigFile()
-	kvs, err := kv.LoadKeyValueConfig(cfg.SyConfigFile)
-	if err != nil {
-		return cfg, jobmgr, net, fmt.Errorf("unable to load the tool's configuration: %s", err)
-	}
-	if kv.GetValue(kvs, slurm.EnabledKey) != "" {
-		cfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, slurm.EnabledKey))
+	if util.PathExists(cfg.SyConfigFile) {
+		kvs, err := kv.LoadKeyValueConfig(cfg.SyConfigFile)
 		if err != nil {
-			log.Fatalf("failed to load the Slurm configuration: %s", err)
+			return cfg, jobmgr, net, fmt.Errorf("unable to load the tool's configuration: %s", err)
 		}
+		if kv.GetValue(kvs, slurm.EnabledKey) != "" {
+			cfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, slurm.EnabledKey))
+			if err != nil {
+				return cfg, jobmgr, net, fmt.Errorf("failed to load the Slurm configuration: %s", err)
+			}
+		}
+	} else {
+		log.Println("-> Creating configuration file...")
+		path, err := sy.CreateMPIConfigFile()
+		if err != nil {
+			return cfg, jobmgr, net, fmt.Errorf("failed to create configuration file: %s", err)
+		}
+		log.Printf("... %s successfully created\n", path)
 	}
 
 	// Load the job manager component first
@@ -222,7 +232,7 @@ func load() (sys.Config, jm.JM, network.Info, error) {
 	}
 
 	// Load the network configuration
-	net = network.Detect()
+	_ = network.Detect(&cfg)
 
 	return cfg, jobmgr, net, nil
 }

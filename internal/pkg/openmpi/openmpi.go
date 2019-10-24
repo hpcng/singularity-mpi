@@ -7,12 +7,16 @@ package openmpi
 
 import (
 	"fmt"
+	"log"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/network"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
+	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/autotools"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/network"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
@@ -39,11 +43,13 @@ func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error
 
 func GetExtraMpirunArgs(sys *sys.Config) []string {
 	var extraArgs []string
-	if sys.Network.ID == network.Infiniband {
-		extraArgs = append(extraArgs, "--mca")
-		extraArgs = append(extraArgs, "btl")
-		extraArgs = append(extraArgs, "openib,self,vader")
-	}
+	/*
+		if sys.IBEnabled {
+			extraArgs = append(extraArgs, "--mca")
+			extraArgs = append(extraArgs, "btl")
+			extraArgs = append(extraArgs, "openib,self,vader")
+		}
+	*/
 
 	return extraArgs
 }
@@ -51,7 +57,29 @@ func GetExtraMpirunArgs(sys *sys.Config) []string {
 func GetExtraConfigureArgs(sysCfg *sys.Config) []string {
 	var extraArgs []string
 	if sysCfg.SlurmEnabled {
-		return []string{"--with-slurm"}
+		extraArgs = append(extraArgs, "--with-slurm")
+	}
+
+	if sysCfg.IBEnabled {
+		kvs, err := sy.LoadMPIConfigFile()
+		if err != nil {
+			log.Printf("[WARN] Unable to load the configuration of the tool; unable to fully Infiniband: %s\n", err)
+			return extraArgs
+		}
+
+		mlxDir := kv.GetValue(kvs, network.MXMDirKey)
+		if mlxDir == "" {
+			log.Printf("[WARN] Infiniband detected but the MXM directory is undefined in the configuration file")
+		} else {
+			extraArgs = append(extraArgs, "--with-mxm="+mlxDir)
+		}
+
+		knemDir := kv.GetValue(kvs, network.KNEMDirKey)
+		if knemDir == "" {
+			log.Printf("[WARN] Infiniband detected but the KNEM directory is undefined in the configuration file")
+		} else {
+			extraArgs = append(extraArgs, "--with-knem="+knemDir)
+		}
 	}
 
 	return extraArgs

@@ -5,24 +5,31 @@
 
 package network
 
-import "log"
+import (
+	"log"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+)
 
 const (
 	Infiniband = "IB"
 	Default    = "default"
 )
 
+type SaveFn func(sysCfg *sys.Config) error
+
 type Info struct {
-	ID string
+	ID   string
+	Save SaveFn
 }
 
-func Detect() Info {
-	loaded, comp := LoadDefault()
+func Detect(sysCfg *sys.Config) Info {
+	loaded, comp := LoadDefault(sysCfg)
 	if !loaded {
 		log.Fatalln("unable to find a default network configuration")
 	}
 
-	loaded, ibComp := LoadInfiniband()
+	loaded, ibComp := LoadInfiniband(sysCfg)
 	if loaded {
 		return ibComp
 	}
