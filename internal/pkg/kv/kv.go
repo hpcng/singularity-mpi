@@ -22,6 +22,28 @@ type KV struct {
 	Value string
 }
 
+// KeyExists checks whether a key exists
+func KeyExists(kvs []KV, key string) bool {
+	for _, kv := range kvs {
+		if kv.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// SetValue sets the value of a given key
+func SetValue(kvs []KV, key string, value string) error {
+	for _, kv := range kvs {
+		if kv.Key == key {
+			kv.Value = value
+			return nil
+		}
+	}
+
+	return fmt.Errorf("unable to find key %s", key)
+}
+
 // GetValue returns the value of a given key from a slice of key/value pairs
 func GetValue(kvs []KV, key string) string {
 	for _, kv := range kvs {
@@ -82,7 +104,7 @@ func ToStringSlice(kvs []KV) []string {
 	var newSlice []string
 
 	for _, kv := range kvs {
-		newSlice = append(newSlice, kv.Key+" = "+kv.Value+"\n")
+		newSlice = append(newSlice, kv.Key+" = "+kv.Value)
 	}
 
 	return newSlice

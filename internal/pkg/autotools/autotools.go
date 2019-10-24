@@ -15,6 +15,7 @@ import (
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
+// Config represents the configuration of the autotools-compliant software to configure/compile/install
 type Config struct {
 	// Install is the path to the directory where the software should be installed
 	Install string

@@ -5,6 +5,12 @@
 
 package sys
 
+// SetConfigFn is a "function pointer" that lets us store the configuration of a given job manager
+type SetConfigFn func() error
+
+// GetConfigFn is a "function pointer" that lets us get the configuration of a given job manager
+type GetConfigFn func() error
+
 // Config captures some system configuration aspects that are necessary
 // to run experiments
 type Config struct {
@@ -48,16 +54,17 @@ type Config struct {
 	Registry string
 	// Upload specifies whether images needs to be uploaded to the registery
 	Upload bool
-	// SlurmEnabled specifies whether we use slurm to start MPI jobs
-	SlurmEnabled bool
 	// Persistent specifies whether we need to keep the installed software (MPI and containers)
 	Persistent string
+	// SlurmEnable specifies whether Slurm is currently enabled
+	SlurmEnabled bool
+	// IBEnables specifies whether Infiniband is currently enabled
+	IBEnabled bool
+	// SyConfigFile
+	SyConfigFile string
 }
 
 const (
 	// CmdTimetout is the maximum time we allow a command to run
 	CmdTimeout = 10
-
-	// SlurmEnabledKey is the key used in the singularity-mpi.conf file to specify if Slurm shall be used
-	SlurmEnabledKey = "enable_slurm"
 )

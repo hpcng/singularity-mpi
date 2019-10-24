@@ -14,6 +14,7 @@ import (
 // OFIConfig is the structure gathering all the configuration details relevant for OFI.
 // These details are loaded from the tool's OFI configuration file.
 type OFIConfig struct {
+	// Ifnet is the identifier of the network interface to use
 	Ifnet string
 }
 

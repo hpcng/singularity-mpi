@@ -3,25 +3,16 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-package sy
+package network
 
 import (
-	"testing"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 )
 
-func TestGetImageURL(t *testing.T) {
-	var mpiCfg mpi.Config
-	var sysCfg sys.Config
+// LoadDefault is the function called to load the default component for networking
+func LoadDefault(sysCfg *sys.Config) (bool, Info) {
+	var network Info
+	network.ID = Default
 
-	mpiCfg.Implem.ID = mpi.OpenMPI
-	mpiCfg.Implem.Version = "4.0.0"
-
-	url := GetImageURL(&mpiCfg, &sysCfg)
-	if url == "" {
-		t.Fatalf("failed to get image URL")
-	}
+	return true, network
 }
