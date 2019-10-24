@@ -9,7 +9,6 @@ import (
 	"bytes"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"

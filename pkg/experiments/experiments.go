@@ -16,8 +16,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
@@ -25,6 +23,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
+	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
@@ -35,24 +34,23 @@ import (
 
 // Config is a structure that represents the configuration of an experiment
 type Config struct {
+	// HostMPI gathers all the data about the MPI to use on the host
 	HostMPI      implem.Info
+
+	// ContainerMPI gathers all the data about the MPI to use in the container
 	ContainerMPI implem.Info
+
+	// Container gathers all the data about the container
 	Container    container.Config
+
+	// BuildEnv gathers all the data about the environment to use to build the software
 	BuildEnv     buildenv.Info
+
+	// App gathers all the data about the application to include in the container
 	App          app.Info
+
+	// Result gathers all the data related to the result of an experiment
 	Result       results.Result
-	/*
-		// MPIImnplm is the string identifying the MPI implementation, e.g., openmpi or mpich
-		MPIImplm string
-		// VersionHostMPI is the version of the MPI implementation to use on the host
-		VersionHostMPI string
-		// URLHostMPI is the URL to use for downloading MPI that is to be installed on the host
-		URLHostMPI string
-		// VersionContainerMPI is the version of the MPI implementation to use in the container
-		VersionContainerMPI string
-		// URLContainerMPI is the URL to use for downloading MPI that is to be installed in the container
-		URLContainerMPI string
-	*/
 }
 
 func postExecutionDataMgt(sysCfg *sys.Config, output string) (string, error) {

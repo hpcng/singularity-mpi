@@ -14,9 +14,7 @@ import (
 	"time"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -24,9 +22,8 @@ import (
 
 // Info gathers all the details to start a job
 type Info struct {
+	// Cmd represents the command to launch a job
 	Cmd syexec.SyCmd
-
-	//GetMpirunExtraArgs GetMpirunExtraArgsFn
 }
 
 // PrepareLaunchCmd interacts with a job manager backend to figure out how to launch a job

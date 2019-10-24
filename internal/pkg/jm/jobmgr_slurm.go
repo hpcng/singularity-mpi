@@ -96,12 +96,6 @@ func SlurmLoad(jm *JM, sysCfg *sys.Config) error {
 		if err != nil {
 			return fmt.Errorf("unable to add Slurm entry in configuration file: %s", err)
 		}
-		/*
-			sysCfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, SlurmEnabledKey))
-			if err != nil {
-				log.Fatalf("failed to load the Slurm configuration: %s", err)
-			}
-		*/
 	}
 
 	return nil

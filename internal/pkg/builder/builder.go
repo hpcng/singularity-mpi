@@ -24,26 +24,26 @@ import (
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
+// GetConfigureExtraArgsFn is the function prootype for getting extra arguments to configure a software
 type GetConfigureExtraArgsFn func(*sys.Config) []string
 
+// ConfigureFn is the function prototype to configuration a specific software
 type ConfigureFn func(*buildenv.Info, *sys.Config, []string) error
 
 // GetDeffileTemplateTagsFn is a "function pointer" to get the tags used in the definition file template for a given implementation of MPI
 type GetDeffileTemplateTagsFn func() deffile.TemplateTags
 
+// Builder gathers all the data specific to a software builder
 type Builder struct {
+	// Configure is the function to call to configure the software
 	Configure             ConfigureFn
+	// GetConfigureExtraArgs is the function to call to get extra arguments for the configuration command
 	GetConfigureExtraArgs GetConfigureExtraArgsFn
-	//GetMpirunExtraArgs     GetMpirunExtraArgsFn
+	// GetDeffileTemplateTags is the function to call to get all template tags
 	GetDeffileTemplateTags GetDeffileTemplateTagsFn
 }
 
-/*
-type GetConfigureExtraArgsFn interface {
-	GetConfigureExtraArgs() []string
-}
-*/
-
+// GenericConfigure is a generic function to configure a software, basically a wrapper around autotool's configure
 func GenericConfigure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error {
 	var ac autotools.Config
 	ac.Install = env.InstallDir

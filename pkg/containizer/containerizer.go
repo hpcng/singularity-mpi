@@ -14,9 +14,7 @@ import (
 	"time"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"

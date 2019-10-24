@@ -11,15 +11,19 @@ import (
 	"os/exec"
 	"strconv"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
 const (
+	// IBForceKey is the key used in the configuration file to specific in Infiniband should always be used
 	IBForceKey = "force_ib"
+
+	// MXMDirKey is the key used in the configuration file to specify where MXM files are installed
 	MXMDirKey  = "mxm_dir"
+
+	// KNEMDirKey is the key used in the configuration file to specify where knem files are installed
 	KNEMDirKey = "knem_dir"
 )
 

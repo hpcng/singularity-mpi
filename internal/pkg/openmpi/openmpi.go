@@ -11,18 +11,21 @@ import (
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/network"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/autotools"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
 const (
+	// VersionTag is the tag used to refer to the MPI version in Open MPI template(s)
 	VersionTag = "OMPIVERSION"
+
+	// URLTag is the tag used to refer to the MPI URL in Open MPI template(s)
 	URLTag     = "OMPIURL"
+
+	// TarballTag is the tag used to refer to the MPI tarball in Open MPI template(s)
 	TarballTag = "OMPITARBALL"
 )
 
