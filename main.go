@@ -226,10 +226,6 @@ func load() (sys.Config, jm.JM, network.Info, error) {
 
 	// Load the job manager component first
 	jobmgr = jm.Detect()
-	err = jobmgr.Load(&jobmgr, &cfg)
-	if err != nil {
-		return cfg, jobmgr, net, fmt.Errorf("unable to load a job manager")
-	}
 
 	// Load the network configuration
 	_ = network.Detect(&cfg)
