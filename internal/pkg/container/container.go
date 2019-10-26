@@ -94,11 +94,12 @@ func Create(container *Config, sysCfg *sys.Config) error {
 	if sysCfg.Debug {
 		err = checker.CheckDefFile(container.DefFile)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to check definition file: %s", err)
 		}
 	}
 
 	log.Printf("-> Using definition file %s", container.DefFile)
+	log.Printf("-> Running %s %s %s %s %s\n", sudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, sudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
 	cmd.Dir = container.BuildDir

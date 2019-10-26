@@ -15,12 +15,19 @@ const (
 
 	// HttpURL is a constant for a HTTP-based URL
 	HttpURL = "http"
+
+	// GitURL is a constant for a Git URL
+	GitURL = "git"
 )
 
 // DetectURLType detects the type of the URL that is passed in.
 func DetectURLType(url string) string {
 	if url[:7] == "file://" {
 		return FileURL
+	}
+
+	if url[len(url)-4:] == ".git" {
+		return GitURL
 	}
 
 	if url[:4] == "http" {

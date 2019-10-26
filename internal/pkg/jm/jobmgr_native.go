@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
@@ -92,6 +91,9 @@ func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.Sy
 	log.Printf("Using %s as LD_LIBRARY_PATH\n", newLDPath)
 	sycmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
 	sycmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
+
+	j.GetOutput = NativeGetOutput
+	j.GetError = NativeGetError
 
 	return sycmd, nil
 }

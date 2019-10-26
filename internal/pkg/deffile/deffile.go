@@ -11,8 +11,10 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -26,19 +28,19 @@ const (
 // TemplateTags gathers all the data related to a given template
 type TemplateTags struct {
 	// Verion is the version of the MPI implementation tag
-	Version           string
+	Version string
 	// Tarball is the tag used to refer to the MPI implementation tarball
-	Tarball           string
+	Tarball string
 	// URL is the tag used to refer to the URL to be used to download MPI
-	URL               string
+	URL string
 	// Dir is the tag to be used to refer to the directory where MPI is installed
-	Dir               string // todo: Should be removed
+	Dir string // todo: Should be removed
 	// InstallConfFile is the tag used to specify where the installation configuration file is assumed to be in the image
-	InstallConffile   string
+	InstallConffile string
 	// UninstallConfFile is the tag used to specify where the uninstallation configuration file is assumed to be in the image
 	UninstallConffile string
 	// Ifnet is the tag referring to the network interface to be used
-	Ifnet             string
+	Ifnet string
 }
 
 // DefFileData is all the data associated to a definition file
@@ -63,9 +65,13 @@ func setMPIInstallDir(mpiImplm string, mpiVersion string) string {
 }
 
 // AddLabels adds a set of labels to the definition file.
-func AddLabels(f *os.File, deffile *DefFileData) error {
-	linuxDistro := "ubuntu"    // todo: do not hardcode
-	appName := "NetPIPE-5.1.4" // todo: do not hardcode
+func AddLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
+	// Some sanity checks
+	if deffile.InternalEnv == nil {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	linuxDistro := "ubuntu" // todo: do not hardcode
 
 	_, err := f.WriteString("%labels\n")
 	if err != nil {
@@ -98,7 +104,7 @@ func AddLabels(f *os.File, deffile *DefFileData) error {
 		return err
 	}
 
-	_, err = f.WriteString("\tApplication " + appName + "\n")
+	_, err = f.WriteString("\tApplication " + app.Name + "\n")
 	if err != nil {
 		return err
 	}
@@ -240,6 +246,119 @@ func UpdateDeffileTemplate(data DefFileData, sysCfg *sys.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %s", data.Path, err)
 	}
+
+	return nil
+}
+
+func createFilesSection(f *os.File, app *app.Info, data *DefFileData, sysCfg *sys.Config) error {
+	if util.DetectTarballFormat(app.Source) == util.UnknownFormat {
+		// This means this is most certainly a file
+		_, err := f.WriteString("%files\n")
+		if err != nil {
+			return fmt.Errorf("failed to write to definition file: %s", err)
+		}
+
+		src := strings.Replace(app.Source, "file://", "", 1)
+		_, err = f.WriteString("\t" + src + " /opt\n\n")
+		if err != nil {
+			return fmt.Errorf("failed to write to definition file: %s", err)
+		}
+	}
+
+	return nil
+}
+
+func createBootstrapSection(f *os.File, data *DefFileData, sysCfg *sys.Config) error {
+	_, err := f.WriteString("Bootstrap: docker\n")
+	if err != nil {
+		return fmt.Errorf("failed to write to definition file: %s", err)
+	}
+
+	_, err = f.WriteString("From: ubuntu:DISTROCODENAME\n\n")
+	if err != nil {
+		return fmt.Errorf("failed to write to definition file: %s", err)
+	}
+
+	return nil
+}
+
+func addAppInstall(f *os.File, app *app.Info, data *DefFileData) error {
+	installCmd := "make install"
+	if app.InstallCmd != "" {
+		installCmd = app.InstallCmd
+	}
+
+	urlType := util.DetectURLType(app.Source)
+	switch urlType {
+	case util.GitURL:
+		srcDir := path.Base(app.Source)
+		srcDir = strings.Replace(srcDir, ".git", "", -1)
+		_, err := f.WriteString("\tcd /opt && git clone " + app.Source + " && cd " + srcDir + " && " + installCmd + "\n")
+		if err != nil {
+			return fmt.Errorf("failed to write to definition file: %s", err)
+		}
+	case util.FileURL:
+		containerSrcPath := filepath.Join(data.InternalEnv.SrcDir, filepath.Base(app.Source))
+		_, err := f.WriteString("\tcd /opt && mpicc -o " + app.BinPath + " " + containerSrcPath + "\n")
+		if err != nil {
+			return fmt.Errorf("failed to write to definition file: %s", err)
+		}
+	case util.HttpURL:
+		format := util.DetectTarballFormat(app.Source)
+		tarArgs := util.GetTarArgs(format)
+		_, err := f.WriteString("\tcd /opt && wget " + app.Source + " && tar " + tarArgs + " " + path.Base(app.Source) + " && cd " + app.Name + " && " + installCmd)
+		if err != nil {
+			return fmt.Errorf("failed to write to definition file: %s", err)
+		}
+	}
+
+	return nil
+}
+
+func CreateDefaultDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) error {
+	// Some sanity checks
+	if data.Path == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	f, err := os.Create(data.Path)
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %s", data.Path, err)
+	}
+
+	err = AddBootstrap(f, data)
+	if err != nil {
+		return fmt.Errorf("failed to create the bootstrap section of the definition file: %s", err)
+	}
+
+	err = AddLabels(f, app, data)
+	if err != nil {
+		return fmt.Errorf("failed to create the files section of the definition file: %s", err)
+	}
+
+	if util.DetectURLType(app.Source) == util.FileURL {
+		err = createFilesSection(f, app, data, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to create the files section of the definition file: %s", err)
+		}
+	}
+
+	err = AddMPIEnv(f, data)
+	if err != nil {
+		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
+	}
+
+	err = AddMPIInstall(f, data)
+	if err != nil {
+		return fmt.Errorf("failed to create the post section of the definition file: %s", err)
+	}
+
+	err = addAppInstall(f, app, data)
+	if err != nil {
+		return fmt.Errorf("failed to create the post section of the definition file: %s", err)
+	}
+
+	f.Close()
 
 	return nil
 }

@@ -23,6 +23,9 @@ const (
 
 	// FormatTAR represents a simple TAR file
 	FormatTAR = "tar"
+
+	// UnkownFormat is the value returned when the format cannot be detected
+	UnknownFormat = ""
 )
 
 // PathExists checks whether a given path exists
@@ -77,7 +80,7 @@ func DetectTarballFormat(filepath string) string {
 		return FormatTAR
 	}
 
-	return ""
+	return UnknownFormat
 }
 
 // CopyFile is a utility functions that copies a file

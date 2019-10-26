@@ -24,11 +24,11 @@ type Info struct {
 	// SrcPath is the path to the downloaded tarball
 	SrcPath string
 	// SrcDir is the directory where the source code is
-	SrcDir     string
+	SrcDir string
 	// InstallDir is the directory where the software needs to be installed
 	InstallDir string
 	// BuildDir is the directory where the software is built
-	BuildDir   string
+	BuildDir string
 }
 
 // Unpack extracts the source code from a package/tarball/zip file.
@@ -197,7 +197,7 @@ func (env *Info) download(mpiCfg *implem.Info) error {
 		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 	}
 
-	// FIXME we currently assume that we have one and only one file in the
+	// todo: we currently assume that we have one and only one file in the
 	// directory This is not a fair assumption, especially while debugging
 	// when we do not wipe out the temporary directories
 	files, err := ioutil.ReadDir(env.BuildDir)

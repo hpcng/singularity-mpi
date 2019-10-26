@@ -35,22 +35,25 @@ import (
 // Config is a structure that represents the configuration of an experiment
 type Config struct {
 	// HostMPI gathers all the data about the MPI to use on the host
-	HostMPI      implem.Info
+	HostMPI implem.Info
 
 	// ContainerMPI gathers all the data about the MPI to use in the container
 	ContainerMPI implem.Info
 
 	// Container gathers all the data about the container
-	Container    container.Config
+	Container container.Config
 
-	// BuildEnv gathers all the data about the environment to use to build the software
-	BuildEnv     buildenv.Info
+	// HostBuildEnv gathers all the data about the environment to use to build the software for the host
+	HostBuildEnv buildenv.Info
+
+	// ContainerBuildEnv gathers all the data about the environment to use to build the software for the container
+	ContainerBuildEnv buildenv.Info
 
 	// App gathers all the data about the application to include in the container
-	App          app.Info
+	App app.Info
 
 	// Result gathers all the data related to the result of an experiment
-	Result       results.Result
+	Result results.Result
 }
 
 func postExecutionDataMgt(sysCfg *sys.Config, output string) (string, error) {
@@ -128,7 +131,7 @@ func createNewContainer(myContainerMPICfg *mpi.Config, exp Config, sysCfg *sys.C
 
 	/* CREATE THE MPI CONTAINER */
 
-	res = createMPIContainer(myContainerMPICfg, &exp.BuildEnv, sysCfg)
+	res = createMPIContainer(&exp.App, myContainerMPICfg, &exp.ContainerBuildEnv, sysCfg)
 	if res.Err != nil {
 		err := saveErrorDetails(exp, sysCfg, &res)
 		if err != nil {
@@ -178,8 +181,8 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	myHostMPICfg.Implem.ID = exp.HostMPI.ID
 	myHostMPICfg.Implem.URL = exp.HostMPI.URL
 	myHostMPICfg.Implem.Version = exp.HostMPI.Version
-	exp.BuildEnv.BuildDir = myHostMPICfg.Buildenv.BuildDir
-	exp.BuildEnv.InstallDir = myHostMPICfg.Buildenv.InstallDir
+	exp.HostBuildEnv.BuildDir = myHostMPICfg.Buildenv.BuildDir
+	exp.HostBuildEnv.InstallDir = myHostMPICfg.Buildenv.InstallDir
 
 	log.Println("* Host MPI Configuration *")
 	log.Println("-> Building MPI in", myHostMPICfg.Buildenv.BuildDir)
@@ -230,7 +233,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 		defer os.RemoveAll(myContainerMPICfg.Buildenv.BuildDir)
 	} else {
 		myContainerMPICfg.Buildenv.BuildDir = filepath.Join(sysCfg.Persistent, containerInstallDir)
-		myContainerMPICfg.Buildenv.InstallDir = myContainerMPICfg.Buildenv.BuildDir
+		myContainerMPICfg.Buildenv.InstallDir = filepath.Join(sysCfg.Persistent, containerInstallDir)
 		if !util.PathExists(myContainerMPICfg.Buildenv.BuildDir) {
 			err := os.MkdirAll(myContainerMPICfg.Buildenv.BuildDir, 0755)
 			if err != nil {
@@ -240,15 +243,18 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 			}
 		}
 	}
+	exp.ContainerBuildEnv.BuildDir = myContainerMPICfg.Buildenv.BuildDir
+	exp.ContainerBuildEnv.InstallDir = myContainerMPICfg.Buildenv.InstallDir
 	myContainerMPICfg.Container.Name = exp.ContainerMPI.ID + "-" + exp.ContainerMPI.Version + ".sif"
-	myContainerMPICfg.Container.Path = filepath.Join(myContainerMPICfg.Buildenv.BuildDir, myContainerMPICfg.Container.Name)
+	myContainerMPICfg.Container.Path = filepath.Join(myContainerMPICfg.Buildenv.InstallDir, myContainerMPICfg.Container.Name)
 	myContainerMPICfg.Container.BuildDir = myContainerMPICfg.Buildenv.BuildDir
 	myContainerMPICfg.Implem.ID = exp.ContainerMPI.ID
 	myContainerMPICfg.Implem.Version = exp.ContainerMPI.Version
 	myContainerMPICfg.Container.URL = sy.GetImageURL(&myContainerMPICfg.Implem, sysCfg)
-	exp.App.BinPath = getAppData(&myContainerMPICfg, sysCfg)
+	exp.App = getAppData(&myContainerMPICfg, sysCfg)
 	log.Println("* Container MPI configuration *")
-	log.Println("-> Build container in", exp.BuildEnv.BuildDir)
+	log.Println("-> Build container in", exp.ContainerBuildEnv.BuildDir)
+	log.Println("-> Storing container in", exp.ContainerBuildEnv.InstallDir)
 	log.Println("-> MPI implementation:", myContainerMPICfg.Implem.ID)
 	log.Println("-> MPI version:", myContainerMPICfg.Implem.Version)
 	log.Println("-> MPI URL:", myContainerMPICfg.Implem.URL)
@@ -287,7 +293,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 
 	// We submit the job
 	var submitCmd syexec.SyCmd
-	submitCmd, execRes.Err = launcher.PrepareLaunchCmd(&mpiJob, &jobmgr, &exp.BuildEnv, sysCfg)
+	submitCmd, execRes.Err = launcher.PrepareLaunchCmd(&mpiJob, &jobmgr, &exp.HostBuildEnv, sysCfg)
 	if execRes.Err != nil {
 		execRes.Err = fmt.Errorf("failed to prepare the launch command: %s", execRes.Err)
 		return false, expRes, execRes
@@ -338,28 +344,23 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	return false, expRes, execRes
 }
 
-func getAppData(mpiCfg *mpi.Config, sysCfg *sys.Config) string {
-	path := filepath.Join("/", "opt", "mpitest")
+func getAppData(mpiCfg *mpi.Config, sysCfg *sys.Config) app.Info {
+	appInfo := app.GetHelloworld(sysCfg)
 	if sysCfg.NetPipe {
-		path = filepath.Join("/", "opt", "NetPIPE-5.1.4", "NPmpi")
+		appInfo = app.GetNetpipe(sysCfg)
 	}
 	if sysCfg.IMB {
-		path = filepath.Join("/", "opt", "mpi-benchmarks", "IMB-MPI1")
+		appInfo = app.GetIMB(sysCfg)
 	}
 
-	return path
+	return appInfo
 }
 
 func createContainerImage(mpiCfg *mpi.Config, buildEnv *buildenv.Info, sysCfg *sys.Config) error {
-	var containerCfg container.Config
-	containerCfg.BuildDir = buildEnv.BuildDir
-	containerCfg.InstallDir = buildEnv.InstallDir
-	err := container.Create(&containerCfg, sysCfg)
+	err := container.Create(&mpiCfg.Container, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create container image: %s", err)
 	}
-
-	//getAppData(mpiCfg, sysCfg)
 
 	return nil
 }
@@ -381,7 +382,7 @@ func GetOutputFilename(mpiImplem string, sysCfg *sys.Config) error {
 }
 
 // createMPIContainer creates a container based on a specific configuration.
-func createMPIContainer(mpiCfg *mpi.Config, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
+func createMPIContainer(appInfo *app.Info, mpiCfg *mpi.Config, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
 	var res syexec.Result
 	var b builder.Builder
 
@@ -393,7 +394,7 @@ func createMPIContainer(mpiCfg *mpi.Config, env *buildenv.Info, sysCfg *sys.Conf
 	}
 
 	log.Println("Creating MPI container...")
-	res.Err = b.GenerateDeffile(&mpiCfg.Implem, env, containerCfg, sysCfg)
+	res.Err = b.GenerateDeffile(appInfo, &mpiCfg.Implem, env, containerCfg, sysCfg)
 	if res.Err != nil {
 		res.Stderr = fmt.Sprintf("failed to generate Singularity definition file: %s", res.Err)
 	}

@@ -10,6 +10,8 @@ import (
 	"log"
 	"path/filepath"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/app"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/autotools"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
@@ -24,6 +26,10 @@ import (
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
+const (
+	DefaultUbuntuDistro = "ubuntu:disco"
+)
+
 // GetConfigureExtraArgsFn is the function prootype for getting extra arguments to configure a software
 type GetConfigureExtraArgsFn func(*sys.Config) []string
 
@@ -36,7 +42,7 @@ type GetDeffileTemplateTagsFn func() deffile.TemplateTags
 // Builder gathers all the data specific to a software builder
 type Builder struct {
 	// Configure is the function to call to configure the software
-	Configure             ConfigureFn
+	Configure ConfigureFn
 	// GetConfigureExtraArgs is the function to call to get extra arguments for the configuration command
 	GetConfigureExtraArgs GetConfigureExtraArgsFn
 	// GetDeffileTemplateTags is the function to call to get all template tags
@@ -194,35 +200,56 @@ func Load(mpiCfg *implem.Info) (Builder, error) {
 	return builder, nil
 }
 
+func (b *Builder) createDefFileFromTemplate(defFileName string, mpiCfg *implem.Info, env *buildenv.Info, container *container.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
+	var f deffile.DefFileData
+
+	templateFileName := defFileName + ".tmpl"
+	templateDefFile := filepath.Join(sysCfg.TemplateDir, templateFileName)
+	container.DefFile = filepath.Join(env.BuildDir, defFileName)
+
+	// Copy the definition file template to the temporary directory
+	err := util.CopyFile(templateDefFile, container.DefFile)
+	if err != nil {
+		return f, fmt.Errorf("failed to copy %s to %s: %s", templateDefFile, container.DefFile, err)
+	}
+
+	// Copy the test file
+	// todo: rely on app info instead of hardcoding
+	testFile := filepath.Join(sysCfg.TemplateDir, "mpitest.c")
+	destTestFile := filepath.Join(env.BuildDir, "mpitest.c")
+	err = util.CopyFile(testFile, destTestFile)
+	if err != nil {
+		return f, fmt.Errorf("failed to copy %s to %s: %s", testFile, destTestFile, err)
+	}
+
+	// Update the definition file for the specific version of MPI we are testing
+	f.Path = container.DefFile
+	f.MpiImplm = mpiCfg
+	f.InternalEnv = env
+	f.Tags = b.GetDeffileTemplateTags()
+	err = deffile.UpdateDeffileTemplate(f, sysCfg)
+	if err != nil {
+		return f, fmt.Errorf("unable to generate definition file from template: %s", err)
+	}
+
+	return f, nil
+}
+
 // GenerateDeffile generates the definition file for a MPI container.
-func (b *Builder) GenerateDeffile(mpiCfg *implem.Info, env *buildenv.Info, container *container.Config, sysCfg *sys.Config) error {
-	log.Println("- Generating Singularity defintion file...")
+func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *buildenv.Info, container *container.Config, sysCfg *sys.Config) error {
+	log.Println("- Generating Singularity definition file...")
 	// Sanity checks
 	if env.BuildDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	var defFileName string
-	var templateFileName string
+	var f deffile.DefFileData
+	var err error
 
-	switch mpiCfg.ID {
-	case implem.OMPI:
-		defFileName = "ubuntu_ompi.def"
-		if sysCfg.NetPipe {
-			defFileName = "ubuntu_ompi_netpipe.def"
-		}
-		if sysCfg.IMB {
-			defFileName = "ubuntu_ompi_imb.def"
-		}
-	case implem.MPICH:
-		defFileName = "ubuntu_mpich.def"
-		if sysCfg.NetPipe {
-			defFileName = "ubuntu_mpich_netpipe.def"
-		}
-		if sysCfg.IMB {
-			defFileName = "ubuntu_mpich_imb.def"
-		}
-	case implem.IMPI:
+	// For IMPI, we generate the definition file from a template, for other MPI implementations,
+	// we create a definition file from scratch
+	if mpiCfg.ID == implem.IMPI {
 		defFileName = "ubuntu_intel.def"
 		if sysCfg.NetPipe {
 			defFileName = "ubuntu_intel_netpipe.def"
@@ -230,44 +257,32 @@ func (b *Builder) GenerateDeffile(mpiCfg *implem.Info, env *buildenv.Info, conta
 		if sysCfg.IMB {
 			defFileName = "ubuntu_intel_imb.def"
 		}
-	default:
-		return fmt.Errorf("unsupported MPI implementation: %s", mpiCfg.ID)
+		f, err = b.createDefFileFromTemplate(defFileName, mpiCfg, env, container, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to create definition file from template: %s", err)
+		}
+	} else {
+		defFileName = "ubuntu_" + mpiCfg.ID + "_" + appInfo.Name + ".def"
+		container.DefFile = filepath.Join(env.BuildDir, defFileName)
+
+		f.Distro = DefaultUbuntuDistro
+		f.InternalEnv = env
+		f.MpiImplm = mpiCfg
+		f.Path = container.DefFile
+
+		err = deffile.CreateDefaultDefFile(appInfo, &f, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to create definition file: %s", err)
+		}
 	}
 
-	templateFileName = defFileName + ".tmpl"
-	templateDefFile := filepath.Join(sysCfg.TemplateDir, templateFileName)
-	container.DefFile = filepath.Join(env.BuildDir, defFileName)
-
-	// Copy the definition file template to the temporary directory
-	err := util.CopyFile(templateDefFile, container.DefFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s to %s: %s", templateDefFile, container.DefFile, err)
-	}
-
-	// Copy the test file
-	testFile := filepath.Join(sysCfg.TemplateDir, "mpitest.c")
-	destTestFile := filepath.Join(env.BuildDir, "mpitest.c")
-	err = util.CopyFile(testFile, destTestFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s to %s: %s", testFile, destTestFile, err)
-	}
-
-	// Update the definition file for the specific version of MPI we are testing
-	var f deffile.DefFileData
-	f.Path = container.DefFile
-	f.MpiImplm = mpiCfg
-	f.InternalEnv = env
-	f.Tags = b.GetDeffileTemplateTags()
-	err = deffile.UpdateDeffileTemplate(f, sysCfg)
-	if err != nil {
-		return fmt.Errorf("unable to generate definition file from template: %s", err)
-	}
+	log.Printf("-> Definition file created: %s\n", f.Path)
 
 	// In debug mode, we save the def file that was generated to the scratch directory
 	if sysCfg.Debug {
 		backupFile := filepath.Join(sysCfg.ScratchDir, defFileName)
 		log.Printf("-> Backing up %s to %s", f.Path, backupFile)
-		err = util.CopyFile(f.Path, backupFile)
+		err := util.CopyFile(f.Path, backupFile)
 		if err != nil {
 			log.Printf("-> error while backing up %s to %s", f.Path, backupFile)
 		}
