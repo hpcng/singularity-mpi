@@ -269,6 +269,7 @@ func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *b
 		f.InternalEnv = env
 		f.MpiImplm = mpiCfg
 		f.Path = container.DefFile
+		f.Model = container.Model
 
 		err = deffile.CreateDefaultDefFile(appInfo, &f, sysCfg)
 		if err != nil {

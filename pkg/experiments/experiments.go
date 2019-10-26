@@ -248,6 +248,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	myContainerMPICfg.Container.Name = exp.ContainerMPI.ID + "-" + exp.ContainerMPI.Version + ".sif"
 	myContainerMPICfg.Container.Path = filepath.Join(myContainerMPICfg.Buildenv.InstallDir, myContainerMPICfg.Container.Name)
 	myContainerMPICfg.Container.BuildDir = myContainerMPICfg.Buildenv.BuildDir
+	myContainerMPICfg.Container.Model = "hybrid"
 	myContainerMPICfg.Implem.ID = exp.ContainerMPI.ID
 	myContainerMPICfg.Implem.Version = exp.ContainerMPI.Version
 	myContainerMPICfg.Container.URL = sy.GetImageURL(&myContainerMPICfg.Implem, sysCfg)

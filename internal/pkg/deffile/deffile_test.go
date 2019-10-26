@@ -61,33 +61,33 @@ func TestCreateDefFile(t *testing.T) {
 
 	var helloworldData DefFileData
 	helloworldData.Path = filepath.Join(tempDir, "helloworld.def")
-	helloworldData.Distro = DefaultUbuntuDistro
+	helloworldData.Distro = "ubuntu:disco"
 	helloworldData.MpiImplm = &openmpi
 	helloworldData.InternalEnv = &helloworldEnv
 
 	var netpipeData DefFileData
 	netpipeData.Path = filepath.Join(tempDir, "netpipe.def")
-	netpipeData.Distro = DefaultUbuntuDistro
+	netpipeData.Distro = "ubuntu:disco"
 	netpipeData.MpiImplm = &openmpi
 	netpipeData.InternalEnv = &netpipeEnv
 
 	var imbData DefFileData
 	imbData.Path = filepath.Join(tempDir, "imb.def")
-	imbData.Distro = DefaultUbuntuDistro
+	imbData.Distro = "ubuntu:disco"
 	imbData.MpiImplm = &openmpi
 	imbData.InternalEnv = &imbEnv
 
-	err = CreateDefFile(&helloworld, &helloworldData, &sysCfg)
+	err = CreateDefaultDefFile(&helloworld, &helloworldData, &sysCfg)
 	if err != nil {
 		t.Fatalf("failed to create definition file for helloworld: %s", err)
 	}
 
-	err = CreateDefFile(&netpipe, &netpipeData, &sysCfg)
+	err = CreateDefaultDefFile(&netpipe, &netpipeData, &sysCfg)
 	if err != nil {
 		t.Fatalf("failed to create definition file for netpipe: %s", err)
 	}
 
-	err = CreateDefFile(&imb, &imbData, &sysCfg)
+	err = CreateDefaultDefFile(&imb, &imbData, &sysCfg)
 	if err != nil {
 		t.Fatalf("failed to create definition file for IMB: %s", err)
 	}

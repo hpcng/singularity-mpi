@@ -47,17 +47,21 @@ type TemplateTags struct {
 type DefFileData struct {
 	// Path is the path to the definition file
 	Path string
+
 	// Distro is the linux distribution identifier to be used in the definition file
 	Distro string
+
 	// MpiImplm is the MPI implementation ID (e.g., OMPI, MPICH)
 	MpiImplm *implem.Info
+
 	// Tags are the keys used in the template file for the MPI to use
 	Tags TemplateTags
+
 	// InternalEnv represents the build environment to use in the definition file
 	InternalEnv *buildenv.Info
 
-	// AppDir is the path to the directory within the container where the application is installed
-	//AppDir string
+	// Model specifies the model to follow for MPI inside the container
+	Model string
 }
 
 func setMPIInstallDir(mpiImplm string, mpiVersion string) string {
@@ -100,6 +104,11 @@ func AddLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 
 	deffile.InternalEnv.InstallDir = setMPIInstallDir(deffile.MpiImplm.ID, deffile.MpiImplm.Version)
 	_, err = f.WriteString("\tMPI_Directory /opt/" + deffile.InternalEnv.InstallDir + "\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\tModel " + deffile.Model + "\n")
 	if err != nil {
 		return err
 	}
@@ -293,22 +302,78 @@ func addAppInstall(f *os.File, app *app.Info, data *DefFileData) error {
 	case util.GitURL:
 		srcDir := path.Base(app.Source)
 		srcDir = strings.Replace(srcDir, ".git", "", -1)
-		_, err := f.WriteString("\tcd /opt && git clone " + app.Source + " && cd " + srcDir + " && " + installCmd + "\n")
+		_, err := f.WriteString("\tcd /opt/$APPDIR" + " && " + installCmd + "\n")
 		if err != nil {
 			return fmt.Errorf("failed to write to definition file: %s", err)
 		}
 	case util.FileURL:
 		containerSrcPath := filepath.Join(data.InternalEnv.SrcDir, filepath.Base(app.Source))
-		_, err := f.WriteString("\tcd /opt && mpicc -o " + app.BinPath + " " + containerSrcPath + "\n")
+		_, err := f.WriteString("\tcd /opt/$APPDIR && mpicc -o " + app.BinPath + " " + containerSrcPath + "\n")
 		if err != nil {
 			return fmt.Errorf("failed to write to definition file: %s", err)
 		}
 	case util.HttpURL:
-		format := util.DetectTarballFormat(app.Source)
-		tarArgs := util.GetTarArgs(format)
-		_, err := f.WriteString("\tcd /opt && wget " + app.Source + " && tar " + tarArgs + " " + path.Base(app.Source) + " && cd " + app.Name + " && " + installCmd)
+		_, err := f.WriteString("\tcd /opt/$APPDIR && " + installCmd)
 		if err != nil {
 			return fmt.Errorf("failed to write to definition file: %s", err)
+		}
+	}
+
+	// todo: Clean up
+	/*
+		_, err := f.WriteString("\trm -rf /opt/" + app.tarball + "\n")
+		if err != nil {
+			return fmt.Errorf("failed to add cleanup section: %s", err)
+		}
+	*/
+
+	return nil
+}
+
+func addMPICleanup(f *os.File, app *app.Info, data *DefFileData) error {
+	// todo
+	return nil
+}
+
+func addDetectAppDir(f *os.File, app *app.Info, data *DefFileData) error {
+	_, err := f.WriteString("\tAPPDIR=`ls -l /opt | egrep '^d' | head -1 | awk '{print $9}'`\n\n")
+	if err != nil {
+		return fmt.Errorf("failed to add app env info: %s", err)
+	}
+
+	return nil
+}
+
+// addAppDownload adds the code to the definition file to download an application
+//
+// Note that the function assumes that /opt is empty when called so it needs to be
+// called before downloading/installing anything else.
+func addAppDownload(f *os.File, app *app.Info, data *DefFileData) error {
+	urlType := util.DetectURLType(app.Source)
+	switch urlType {
+	case util.GitURL:
+		srcDir := path.Base(app.Source)
+		srcDir = strings.Replace(srcDir, ".git", "", -1)
+		_, err := f.WriteString("\tcd /opt && git clone " + app.Source + "\n")
+		if err != nil {
+			return fmt.Errorf("failed to write to definition file: %s", err)
+		}
+
+		err = addDetectAppDir(f, app, data)
+		if err != nil {
+			return fmt.Errorf("failed to add code to get the directory of the app to the definition file: %s", err)
+		}
+	case util.HttpURL:
+		format := util.DetectTarballFormat(app.Source)
+		tarArgs := util.GetTarArgs(format)
+		_, err := f.WriteString("\tcd /opt && wget " + app.Source + " && tar " + tarArgs + " " + path.Base(app.Source) + "\n")
+		if err != nil {
+			return fmt.Errorf("failed to write to definition file: %s", err)
+		}
+
+		err = addDetectAppDir(f, app, data)
+		if err != nil {
+			return fmt.Errorf("failed to add code to get the directory of the app to the definition file: %s", err)
 		}
 	}
 
@@ -348,6 +413,11 @@ func CreateDefaultDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) 
 		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
 	}
 
+	err = addAppDownload(f, app, data)
+	if err != nil {
+		return fmt.Errorf("failed to add the section to download the app: %s", err)
+	}
+
 	err = AddMPIInstall(f, data)
 	if err != nil {
 		return fmt.Errorf("failed to create the post section of the definition file: %s", err)
@@ -356,6 +426,11 @@ func CreateDefaultDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) 
 	err = addAppInstall(f, app, data)
 	if err != nil {
 		return fmt.Errorf("failed to create the post section of the definition file: %s", err)
+	}
+
+	err = addMPICleanup(f, app, data)
+	if err != nil {
+		return fmt.Errorf("failed to add code to cleanup MPI files: %s", err)
 	}
 
 	f.Close()

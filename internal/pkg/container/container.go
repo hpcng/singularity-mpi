@@ -29,6 +29,12 @@ const (
 
 	// KeyIndex is the index of the key to use to sign images
 	KeyIndex = "SY_KEY_INDEX"
+
+	// HybridModel is the identifier used to identify the hybrid model
+	HybridModel = "hybrid"
+
+	// BindModel is the identifier used to identify the bind-mount model
+	BindModel = "bind"
 )
 
 // Config is a structure representing a container
@@ -53,6 +59,9 @@ type Config struct {
 
 	// URL is the URL of the container image to use when pulling the image from a registry
 	URL string
+
+	// Model specifies the model to follow for MPI inside the container
+	Model string
 }
 
 // CreateContainer creates a container based on a MPI configuration
