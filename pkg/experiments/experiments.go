@@ -25,6 +25,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -175,7 +176,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 		}
 		defer os.RemoveAll(myHostMPICfg.Buildenv.InstallDir)
 	} else {
-		myHostMPICfg.Buildenv.InstallDir = filepath.Join(sysCfg.Persistent, "mpi_install_"+exp.HostMPI.Version)
+		myHostMPICfg.Buildenv.InstallDir = persistent.GetPersistentHostMPIInstallDir(&exp.HostMPI, sysCfg)
 	}
 
 	myHostMPICfg.Implem.ID = exp.HostMPI.ID
@@ -221,7 +222,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 
 	// Create a temporary directory where the container will be built
 	myContainerMPICfg.Implem.URL = exp.ContainerMPI.URL
-	containerInstallDir := "mpi_container_" + exp.ContainerMPI.Version
+	containerInstallDir := container.GetContainerInstallDir(&exp.App)
 	if sysCfg.Persistent == "" {
 		myContainerMPICfg.Buildenv.BuildDir, err = ioutil.TempDir("", containerInstallDir+"-")
 		//myContainerMPICfg.Buildenv.InstallDir = myContainerMPICfg.Buildenv.BuildDir

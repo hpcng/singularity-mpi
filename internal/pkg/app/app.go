@@ -10,6 +10,9 @@ type Info struct {
 	// Name is the name of the application
 	Name string
 
+	// BinName is the name of the binary to start executing the application
+	BinName string
+
 	// BinPath is the path to the binary to start executing the application
 	BinPath string
 

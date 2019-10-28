@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/app"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -242,4 +244,8 @@ func Upload(containerInfo *Config, sysCfg *sys.Config) error {
 	}
 
 	return nil
+}
+
+func GetContainerInstallDir(appInfo *app.Info) string {
+	return "mpi_container_" + appInfo.Name
 }

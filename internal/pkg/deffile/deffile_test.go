@@ -77,17 +77,17 @@ func TestCreateDefFile(t *testing.T) {
 	imbData.MpiImplm = &openmpi
 	imbData.InternalEnv = &imbEnv
 
-	err = CreateDefaultDefFile(&helloworld, &helloworldData, &sysCfg)
+	err = CreateHybridDefFile(&helloworld, &helloworldData, &sysCfg)
 	if err != nil {
 		t.Fatalf("failed to create definition file for helloworld: %s", err)
 	}
 
-	err = CreateDefaultDefFile(&netpipe, &netpipeData, &sysCfg)
+	err = CreateHybridDefFile(&netpipe, &netpipeData, &sysCfg)
 	if err != nil {
 		t.Fatalf("failed to create definition file for netpipe: %s", err)
 	}
 
-	err = CreateDefaultDefFile(&imb, &imbData, &sysCfg)
+	err = CreateHybridDefFile(&imb, &imbData, &sysCfg)
 	if err != nil {
 		t.Fatalf("failed to create definition file for IMB: %s", err)
 	}

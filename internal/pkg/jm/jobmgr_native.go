@@ -41,7 +41,7 @@ func getEnvPath(mpiCfg *implem.Info, env *buildenv.Info) string {
 		return filepath.Join(env.InstallDir, impi.IntelInstallPathPrefix, "bin") + ":" + os.Getenv("PATH")
 	}
 
-	return filepath.Join(env.InstallDir, "bin") + ":" + os.Getenv("PATH")
+	return env.GetEnvPath()
 }
 
 func getEnvLDPath(mpiCfg *implem.Info, env *buildenv.Info) string {
@@ -50,7 +50,7 @@ func getEnvLDPath(mpiCfg *implem.Info, env *buildenv.Info) string {
 		return filepath.Join(env.InstallDir, impi.IntelInstallPathPrefix, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 	}
 
-	return filepath.Join(env.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
+	return env.GetEnvLDPath()
 }
 
 // NativeGetOutput retrieves the application's output after the completion of a job

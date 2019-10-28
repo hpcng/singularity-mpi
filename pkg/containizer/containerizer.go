@@ -120,9 +120,30 @@ func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) 
 	deffileCfg.InternalEnv = &mpiCfg.Buildenv
 	deffileCfg.Model = mpiCfg.Container.Model
 
-	err := deffile.CreateDefaultDefFile(&app.info, &deffileCfg, sysCfg)
-	if err != nil {
-		return def, fmt.Errorf("unable to create container: %s", err)
+	switch mpiCfg.Container.Model {
+	case container.HybridModel:
+		// todo: should call the builder and not directly that function
+		err := deffile.CreateHybridDefFile(&app.info, &deffileCfg, sysCfg)
+		if err != nil {
+			return def, fmt.Errorf("unable to create container: %s", err)
+		}
+	case container.BindModel:
+		b, err := builder.Load(&mpiCfg.Implem)
+		if err != nil {
+			return def, fmt.Errorf("unable to instantiate builder")
+		}
+
+		var hostAppBuildEnv buildenv.Info
+		err = b.CompileAppOnHost(&app.info, mpiCfg, &hostAppBuildEnv, sysCfg)
+		if err != nil {
+			return def, fmt.Errorf("failed to compile the application on the host: %s", err)
+		}
+
+		// todo: should call the builder and not directly that function
+		err = deffile.CreateBindDefFile(&app.info, &deffileCfg, sysCfg)
+		if err != nil {
+			return def, fmt.Errorf("unable to create container: %s", err)
+		}
 	}
 
 	return deffileCfg, nil
@@ -137,6 +158,7 @@ func getCommonContainerConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysC
 	// but this allows us to have fairly independent components without dependency circles.
 	containerBuildEnv.BuildDir = filepath.Join(kv.GetValue(kvs, "scratch_dir"), "container", "build")
 	containerBuildEnv.InstallDir = containerBuildEnv.BuildDir
+	containerBuildEnv.ScratchDir = kv.GetValue(kvs, "scratch_dir")
 	containerMPI.Container.BuildDir = containerBuildEnv.BuildDir
 	containerMPI.Container.InstallDir = containerBuildEnv.BuildDir
 	containerMPI.Container.Name = kv.GetValue(kvs, "app_name") + ".sif"
@@ -236,6 +258,9 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	if kv.GetValue(kvs, "output_dir") == "" {
 		return containerMPI.Container, fmt.Errorf("output directory is not defined")
 	}
+	if kv.GetValue(kvs, "app_name") == "" {
+		return containerMPI.Container, fmt.Errorf("Application's name is not defined")
+	}
 	if kv.GetValue(kvs, "app_url") == "" {
 		return containerMPI.Container, fmt.Errorf("Application URL is not defined")
 	}
@@ -270,12 +295,14 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 		url = url + "/"
 	}
 	sysCfg.Registry = url + kv.GetValue(kvs, "app_name") + ":" + curTime.Format("20060102")
+	sysCfg.ScratchDir = kv.GetValue(kvs, "scratch_dir")
 
 	// Load the app configuration
 	var app appConfig
+	app.info.Name = kv.GetValue(kvs, "app_name")
 	app.info.Source = kv.GetValue(kvs, "app_url")
 	app.tarball = path.Base(app.info.Source)
-	app.info.BinPath = kv.GetValue(kvs, "app_exe")
+	app.info.BinName = kv.GetValue(kvs, "app_exe")
 	app.info.InstallCmd = kv.GetValue(kvs, "app_compile_cmd")
 	if app.info.Source == "" {
 		return containerMPI.Container, fmt.Errorf("application's URL is not defined")
@@ -305,6 +332,12 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	log.Printf("-> Container name: %s\n", containerMPI.Container.Name)
 	log.Printf("-> Container Linux distribution: %s\n", containerMPI.Container.Distro)
 	log.Printf("-> Container MPI model: %s\n", containerMPI.Container.Model)
+	log.Printf("-> Scratch directory: %s\n", sysCfg.ScratchDir)
+
+	err = util.DirInit(sysCfg.ScratchDir)
+	if err != nil {
+		return containerMPI.Container, fmt.Errorf("failed to initialize %s: %s", sysCfg.ScratchDir, err)
+	}
 
 	err = util.DirInit(containerBuildEnv.BuildDir)
 	if err != nil {

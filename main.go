@@ -250,7 +250,7 @@ func main() {
 	nRun := flag.Int("n", 1, "Number of iterations")
 	appContainizer := flag.String("app-containizer", "", "Path to the configuration file for automatically containerization an application")
 	upload := flag.Bool("upload", false, "Upload generated images (appropriate configuration files need to specify the registry's URL")
-	persistent := flag.String("persistent-installs", "", "Keep the MPI installations on the host and the container images in the specified directory (instead of deleting everything once an experiment terminates)")
+	persistent := flag.Bool("persistent-installs", false, "Keep the MPI installations on the host and the container images in the specified directory (instead of deleting everything once an experiment terminates). Default is '~/.sympi', set SYMPI_INSTALL_DIR to overwrite")
 
 	flag.Parse()
 
@@ -263,7 +263,13 @@ func main() {
 	sysCfg.Upload = *upload
 	sysCfg.Verbose = *verbose
 	sysCfg.Debug = *debug
-	sysCfg.Persistent = *persistent
+	if *persistent {
+		if os.Getenv("SYMPI_INSTALL_DIR") != "" {
+			sysCfg.Persistent = os.Getenv("SYMPI_INSTALL_DIR")
+		} else {
+			sysCfg.Persistent = filepath.Join(os.Getenv("HOME"), ".sympi")
+		}
+	}
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
 	if err != nil {

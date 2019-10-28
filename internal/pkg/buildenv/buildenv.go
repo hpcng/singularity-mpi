@@ -3,10 +3,16 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
+/*
+ * buildenv is a package that provides all the capabilities to deal with a build environment,
+ * from defining where the software should be compiled and install, to the actual configuration,
+ * compilation and installation of software.
+ */
 package buildenv
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -14,26 +20,51 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
+	"time"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
+
+// SoftwarePackage gathers all the information related to the software package to prepare in the build environment
+type SoftwarePackage struct {
+	// Name is the name with which the software package is recognized
+	Name string
+
+	// URL is the source of the software
+	URL string
+
+	// InstallCmd is the command used to install the software
+	InstallCmd string
+
+	tarball string
+}
 
 // Info gathers the details of the build environment
 type Info struct {
 	// SrcPath is the path to the downloaded tarball
 	SrcPath string
+
 	// SrcDir is the directory where the source code is
 	SrcDir string
+
+	// ScratchDir is the directory where we can store temporary data
+	ScratchDir string
+
 	// InstallDir is the directory where the software needs to be installed
 	InstallDir string
+
 	// BuildDir is the directory where the software is built
 	BuildDir string
+
+	// Env is the environment to use with the build environment
+	Env []string
 }
 
 // Unpack extracts the source code from a package/tarball/zip file.
 func (env *Info) Unpack() error {
-	log.Println("- Unpacking MPI...")
+	log.Println("- Unpacking software...")
 
 	// Sanity checks
 	if env.SrcPath == "" || env.BuildDir == "" {
@@ -60,6 +91,7 @@ func (env *Info) Unpack() error {
 	}
 
 	// Untar the package
+	log.Printf("-> Executing from %s: %s %s %s \n", env.BuildDir, tarPath, tarArg, env.SrcPath)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(tarPath, tarArg, env.SrcPath)
 	cmd.Dir = env.BuildDir
@@ -117,78 +149,79 @@ func (env *Info) RunMake(stage string) error {
 	return nil
 }
 
-func (env *Info) copyTarball(mpiCfg *implem.Info) error {
+func (env *Info) copyTarball(p *SoftwarePackage) error {
 	// Some sanity checks
-	if mpiCfg.URL == "" {
+	if p.URL == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	// Figure out the name of the file if we do not already have it
-	if mpiCfg.Tarball == "" {
-		mpiCfg.Tarball = path.Base(mpiCfg.URL)
+	if p.tarball == "" {
+		p.tarball = path.Base(p.URL)
 	}
 
-	targetTarballPath := filepath.Join(env.BuildDir, mpiCfg.Tarball)
+	targetTarballPath := filepath.Join(env.BuildDir, p.tarball)
 	// The begining of the URL starts with 'file://' which we do not want
-	err := util.CopyFile(mpiCfg.URL[7:], targetTarballPath)
+	err := util.CopyFile(p.URL[7:], targetTarballPath)
 	if err != nil {
-		return fmt.Errorf("cannot copy file %s to %s: %s", mpiCfg.URL, targetTarballPath, err)
+		return fmt.Errorf("cannot copy file %s to %s: %s", p.URL, targetTarballPath, err)
 	}
 
-	env.SrcPath = filepath.Join(env.BuildDir, mpiCfg.Tarball)
+	env.SrcPath = filepath.Join(env.BuildDir, p.tarball)
 
 	return nil
 }
 
 // Get is the function to get a given source code
-func (env *Info) Get(mpiCfg *implem.Info) error {
-	log.Println("- Getting MPI...")
+func (env *Info) Get(p *SoftwarePackage) error {
+	log.Printf("- Getting %s from %s...\n", p.Name, p.URL)
 
 	// Sanity checks
-	if mpiCfg.URL == "" {
+	if p.URL == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	// Detect the type of URL, e.g., file vs. http*
-	urlFormat := util.DetectURLType(mpiCfg.URL)
+	urlFormat := util.DetectURLType(p.URL)
 	if urlFormat == "" {
-		return fmt.Errorf("impossible to detect type from URL %s", mpiCfg.URL)
+		return fmt.Errorf("impossible to detect type from URL %s", p.URL)
 	}
 
 	switch urlFormat {
 	case util.FileURL:
-		err := env.copyTarball(mpiCfg)
+		err := env.copyTarball(p)
 		if err != nil {
-			return fmt.Errorf("impossible to copy the MPI tarball: %s", err)
+			return fmt.Errorf("impossible to copy the tarball: %s", err)
 		}
 	case util.HttpURL:
-		err := env.download(mpiCfg)
+		err := env.download(p)
 		if err != nil {
-			return fmt.Errorf("impossible to download MPI: %s", err)
+			return fmt.Errorf("impossible to download %s: %s", p.Name, err)
 		}
 	default:
-		return fmt.Errorf("impossible to detect URL type: %s", mpiCfg.URL)
+		return fmt.Errorf("impossible to detect URL type: %s", p.URL)
 	}
 
 	return nil
 }
 
-func (env *Info) download(mpiCfg *implem.Info) error {
-	log.Println("- Downloading MPI...")
-
+func (env *Info) download(p *SoftwarePackage) error {
 	// Sanity checks
-	if mpiCfg.URL == "" || env.BuildDir == "" {
+	if p.URL == "" || env.BuildDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
-	// TODO do not assume wget
+	log.Printf("- Downloading %s from %s...", p.Name, p.URL)
+
+	// todo: do not assume wget
 	binPath, err := exec.LookPath("wget")
 	if err != nil {
 		return fmt.Errorf("cannot find wget: %s", err)
 	}
 
+	log.Printf("* Executing from %s: %s %s", env.BuildDir, binPath, p.URL)
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(binPath, mpiCfg.URL)
+	cmd := exec.Command(binPath, p.URL)
 	cmd.Dir = env.BuildDir
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
@@ -207,8 +240,66 @@ func (env *Info) download(mpiCfg *implem.Info) error {
 	if len(files) != 1 {
 		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1", env.BuildDir, len(files))
 	}
-	mpiCfg.Tarball = files[0].Name()
+	p.tarball = files[0].Name()
 	env.SrcPath = filepath.Join(env.BuildDir, files[0].Name())
+
+	return nil
+}
+
+// IsInstalled checks whether a specific software package is already installed in a specific build environment
+func (env *Info) IsInstalled(p *SoftwarePackage) bool {
+	switch util.DetectURLType(p.URL) {
+	case util.FileURL:
+		filename := path.Base(p.URL)
+		filePathInBuildDir := filepath.Join(env.BuildDir, filename)
+		filePathInInstallDir := filepath.Join(env.InstallDir, filename)
+		return util.FileExists(filePathInBuildDir) || util.FileExists(filePathInInstallDir)
+	case util.HttpURL:
+		// todo: do not assume that a package downloaded from the web is always a tarball
+		filename := path.Base(p.URL)
+		filePath := filepath.Join(env.BuildDir, filename)
+		log.Printf("* Checking whether %s exists...\n", filePath)
+		return util.FileExists(filePath)
+	case util.GitURL:
+		dirname := path.Base(p.URL)
+		dirname = strings.Replace(dirname, ".git", "", -1)
+		path := filepath.Join(env.BuildDir, dirname)
+		return util.PathExists(path)
+	}
+
+	return false
+}
+
+func (env *Info) GetEnvPath() string {
+	return filepath.Join(env.InstallDir, "bin") + ":" + os.Getenv("PATH")
+}
+
+func (env *Info) GetEnvLDPath() string {
+	return filepath.Join(env.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
+}
+
+// Install is a generic function to install a software
+func (env *Info) Install(p *SoftwarePackage) error {
+	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*time.Second)
+	defer cancel()
+
+	cmdElts := strings.Split(p.InstallCmd, " ")
+	binPath, err := exec.LookPath(cmdElts[0])
+	if err != nil {
+		// If we cannot find the executable, it is specific to the package
+		binPath = cmdElts[0]
+	}
+	log.Printf("Executing from %s: %s %s.", env.SrcDir, binPath, strings.Join(cmdElts[1:], " "))
+	cmd := exec.CommandContext(ctx, binPath, cmdElts[1:]...)
+	cmd.Dir = env.SrcDir
+	cmd.Env = env.Env
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to install %s: %s; stdout: %s; stderr: %s", p.Name, err, stdout.String(), stderr.String())
+	}
 
 	return nil
 }
