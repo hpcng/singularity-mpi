@@ -17,6 +17,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
+// todo: should be in a util package
 func isInSlice(s []string, w string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] == w {
@@ -46,6 +47,8 @@ func parseDpkgOutput(dependencies []string, output string) []string {
 	return dependencies
 }
 
+// DebianGetDependencies parses the ldd output and figure out the required
+// dependencies in term of Debian packages
 func DebianGetDependencies(output string) []string {
 	var dependencies []string
 
@@ -82,6 +85,9 @@ func DebianGetDependencies(output string) []string {
 	return dependencies
 }
 
+// DebianLoad is the function called to see if the module is usable on the
+// current system. If so, the module structure returned has all the functions
+// required for Debian based systems.
 func DebianLoad() (bool, Module) {
 	var Debian Module
 	Debian.GetDependencies = DebianGetDependencies

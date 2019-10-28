@@ -9,6 +9,8 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
+// GetIMB returns the app.Info structure with all the details for the
+// IMB test
 func GetIMB(sysCfg *sys.Config) Info {
 	var imb Info
 	imb.Name = "IMB"

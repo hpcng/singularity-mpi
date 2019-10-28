@@ -305,6 +305,8 @@ func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *b
 	return nil
 }
 
+// CompileAppOnHost compiles and installs a given application on the host, as well
+// as the required MPI implementation when necessary
 func (b *Builder) CompileAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildEnv *buildenv.Info, sysCfg *sys.Config) error {
 	var s buildenv.SoftwarePackage
 	s.URL = appInfo.Source

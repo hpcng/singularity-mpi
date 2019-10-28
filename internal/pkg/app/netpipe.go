@@ -9,6 +9,8 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
+// GetNetpipe returns the app.Info structure with all the details for the
+// netpipe test
 func GetNetpipe(sysCfg *sys.Config) Info {
 	var netpipe Info
 	netpipe.Name = "NetPIPE-5.1.4"

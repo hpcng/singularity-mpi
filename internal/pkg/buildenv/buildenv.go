@@ -270,10 +270,14 @@ func (env *Info) IsInstalled(p *SoftwarePackage) bool {
 	return false
 }
 
+// GetEnvPath returns the string representing the value for the PATH environment
+// variable to use
 func (env *Info) GetEnvPath() string {
 	return filepath.Join(env.InstallDir, "bin") + ":" + os.Getenv("PATH")
 }
 
+// GetEnvLDPath returns the string representing the value for the LD_LIBRARY_PATH
+// environment variable to use
 func (env *Info) GetEnvLDPath() string {
 	return filepath.Join(env.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 }

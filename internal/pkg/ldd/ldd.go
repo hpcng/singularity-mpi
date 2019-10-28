@@ -16,12 +16,20 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
+// GetDependenciesFn is a function "pointer" for a distribution-specific
+// function that parses the output of ldd and find the binary packages associated
+// to the dependencies expressed in the ldd output.
 type GetDependenciesFn func(string) []string
 
+// Module represents a distribution-specific module that can handle output
+// from ldd.
 type Module struct {
 	GetDependencies GetDependenciesFn
 }
 
+// GetPackageDependenciesForFile finds all the binary-package dependencies
+// for a specific file, by running ldd and the appropriate module for the
+// target linux distribution
 func (m *Module) GetPackageDependenciesForFile(file string) []string {
 	var dependencies []string
 
@@ -51,6 +59,7 @@ func (m *Module) GetPackageDependenciesForFile(file string) []string {
 	return dependencies
 }
 
+// Detect finds the ldd module applicable to the current system
 func Detect() (Module, error) {
 	loaded, mod := DebianLoad()
 	if loaded {

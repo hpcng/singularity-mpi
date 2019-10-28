@@ -246,6 +246,8 @@ func Upload(containerInfo *Config, sysCfg *sys.Config) error {
 	return nil
 }
 
+// GetContainerInstallDir returns the standard directory name where the container's
+// related files will be stored
 func GetContainerInstallDir(appInfo *app.Info) string {
 	return "mpi_container_" + appInfo.Name
 }

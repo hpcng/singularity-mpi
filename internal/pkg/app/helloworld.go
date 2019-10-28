@@ -11,6 +11,8 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
+// GetHelloworld returns the app.Info structure with all the details for our
+// helloworld test
 func GetHelloworld(sysCfg *sys.Config) Info {
 	var hw Info
 

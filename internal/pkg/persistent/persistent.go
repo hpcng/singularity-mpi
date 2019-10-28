@@ -12,6 +12,8 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
+// GetPersistentHostMPIInstallDir returns the path to the directory where
+// MPI should be installed when in persistent mode
 func GetPersistentHostMPIInstallDir(mpi *implem.Info, sysCfg *sys.Config) string {
 	return filepath.Join(sysCfg.Persistent, "mpi_install_"+mpi.Version)
 }
