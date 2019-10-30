@@ -3,8 +3,19 @@
 # LICENSE.md file distributed with the sources of this project regarding your
 # rights to use or distribute this software.
 
-all:
-	go build main.go
+all: sympi syvalidate sycontainerize
+
+syvalidate: cmd/syvalidate/main.go
+	cd cmd/syvalidate; go build main.go
+
+sympi: cmd/sympi/main.go
+	cd cmd/sympi; go build main.go
+
+sycontainerize: cmd/sycontainerize/main.go
+	cd cmd/sycontainerize; go build main.go
+
+install:
+	go install ./...
 
 clean:
 	@rm -f main

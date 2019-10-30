@@ -5,6 +5,27 @@
 
 package sys
 
+import (
+	"os"
+	"path/filepath"
+)
+
+const (
+	// SYMPI_INSTALL_DIR_ENV is the name of the environment variable to set the
+	// directory used to install MPI and store container images
+	SYMPI_INSTALL_DIR_ENV = "SYMPI_INSTALL_DIR"
+
+	// DefaultSympiInstallDir is the name of the default directory in $HOME to store
+	// image containers and install MPI
+	DefaultSympiInstallDir = ".sympi"
+
+	// CmdTimetout is the maximum time we allow a command to run
+	CmdTimeout = 10
+
+	// DefaultUbuntuDistro is the default Ubuntu distribution we use
+	DefaultUbuntuDistro = "disco"
+)
+
 // SetConfigFn is a "function pointer" that lets us store the configuration of a given job manager
 type SetConfigFn func() error
 
@@ -64,7 +85,12 @@ type Config struct {
 	SyConfigFile string
 }
 
-const (
-	// CmdTimetout is the maximum time we allow a command to run
-	CmdTimeout = 10
-)
+// GetSympiDir returns the directory where MPI is installed and container images
+// stored
+func GetSympiDir() string {
+	if os.Getenv(SYMPI_INSTALL_DIR_ENV) != "" {
+		return os.Getenv(SYMPI_INSTALL_DIR_ENV)
+	} else {
+		return filepath.Join(os.Getenv("HOME"), DefaultSympiInstallDir)
+	}
+}
