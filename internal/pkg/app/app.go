@@ -7,5 +7,18 @@ package app
 
 // Info gathers information about a given application
 type Info struct {
+	// Name is the name of the application
+	Name string
+
+	// BinName is the name of the binary to start executing the application
+	BinName string
+
+	// BinPath is the path to the binary to start executing the application
 	BinPath string
+
+	// Source is the URL to get the source. It can be a single file or a URI to a file to download
+	Source string
+
+	// InstallCmd is the command to use to install the application
+	InstallCmd string
 }

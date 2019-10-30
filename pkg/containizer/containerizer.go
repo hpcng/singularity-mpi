@@ -13,32 +13,33 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
-	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
+	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
+const (
+	mpiModelKey = "mpi_model"
+)
+
 type appConfig struct {
-	// url is the URL to use to download the application
-	url string
+	// info is the high-level information about the application to execute
+	info app.Info
+
 	// tarball is the name of the tarball associated to the application
 	tarball string
-	// dir is the directory of the source code once the tarball is unpacked
-	//dir string
-	// compileCmd is the command used to compile the application
-	compileCmd string
+
 	// envScript is the path to the script that the user will be
 	// able to use to set all the environment variables necessary to use the MPI installed on the host
 	envScript string
-	// exe is the binary name to start the application
-	exe string
 }
 
 func getMPIURL(mpi string, version string, sysCfg *sys.Config) string {
@@ -102,124 +103,190 @@ func generateEnvFile(app *appConfig, mpiCfg *implem.Info, env *buildenv.Info, sy
 
 func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
 	var def deffile.DefFileData
-	f, err := os.Create(mpiCfg.Container.DefFile)
-	if err != nil {
-		return def, fmt.Errorf("failed to create %s: %s", mpiCfg.Container.DefFile, err)
+
+	// Sanity checks
+	if app == nil || mpiCfg == nil || sysCfg == nil || mpiCfg.Container.DefFile == "" {
+		return def, fmt.Errorf("invalid parameter(s)")
 	}
+
+	log.Printf("-> Create definition file %s\n", mpiCfg.Container.DefFile)
 
 	deffileCfg := deffile.DefFileData{
 		Path:   mpiCfg.Container.DefFile,
 		Distro: mpiCfg.Container.Distro,
 	}
 
-	deffileCfg.MpiImplm.ID = mpiCfg.Implem.ID
-	deffileCfg.MpiImplm.Version = mpiCfg.Implem.Version
-	deffileCfg.MpiImplm.URL = mpiCfg.Implem.URL
+	deffileCfg.MpiImplm = &mpiCfg.Implem
+	deffileCfg.InternalEnv = &mpiCfg.Buildenv
+	deffileCfg.Model = mpiCfg.Container.Model
 
-	err = deffile.AddBootstrap(f, &deffileCfg)
-	if err != nil {
-		return deffileCfg, err
-	}
+	switch mpiCfg.Container.Model {
+	case container.HybridModel:
+		// todo: should call the builder and not directly that function
+		err := deffile.CreateHybridDefFile(&app.info, &deffileCfg, sysCfg)
+		if err != nil {
+			return def, fmt.Errorf("unable to create container: %s", err)
+		}
+	case container.BindModel:
+		b, err := builder.Load(&mpiCfg.Implem)
+		if err != nil {
+			return def, fmt.Errorf("unable to instantiate builder")
+		}
 
-	err = deffile.AddLabels(f, &deffileCfg)
-	if err != nil {
-		return deffileCfg, err
-	}
+		var hostAppBuildEnv buildenv.Info
+		err = b.CompileAppOnHost(&app.info, mpiCfg, &hostAppBuildEnv, sysCfg)
+		if err != nil {
+			return def, fmt.Errorf("failed to compile the application on the host: %s", err)
+		}
 
-	err = deffile.AddMPIEnv(f, &deffileCfg)
-	if err != nil {
-		return deffileCfg, err
-	}
-
-	// Get and compile the app
-	_, err = f.WriteString("\tcd /opt && wget " + app.url + " && tar -xzf " + app.tarball + "\n")
-	if err != nil {
-		return deffileCfg, err
-	}
-
-	// Download and unpack the app
-	_, err = f.WriteString("\tAPPDIR=`ls -l /opt | egrep '^d' | head -1 | awk '{print $9}'`\n")
-	if err != nil {
-		return deffileCfg, err
-	}
-
-	err = deffile.AddMPIInstall(f, &deffileCfg)
-	if err != nil {
-		return deffileCfg, err
-	}
-
-	// Compile the app
-	_, err = f.WriteString("\tcd /opt/$APPDIR && " + app.compileCmd + "\n")
-	if err != nil {
-		return deffileCfg, err
-	}
-
-	// Clean up
-	_, err = f.WriteString("\trm -rf /opt/" + app.tarball + " /tmp/ompi\n")
-	if err != nil {
-		return deffileCfg, err
-	}
-
-	err = f.Close()
-	if err != nil {
-		return deffileCfg, fmt.Errorf("failed to close %s: %s", deffileCfg.Path, err)
+		// todo: should call the builder and not directly that function
+		err = deffile.CreateBindDefFile(&app.info, &deffileCfg, sysCfg)
+		if err != nil {
+			return def, fmt.Errorf("unable to create container: %s", err)
+		}
 	}
 
 	return deffileCfg, nil
 }
 
+func getCommonContainerConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) buildenv.Info {
+	// (deffile.DefFileData, buildenv.Info) {
+	var containerBuildEnv buildenv.Info
+
+	// These different structures are used during different stage of the creation of the container
+	// so yes we have some duplication in term of value stored in elements of different structures
+	// but this allows us to have fairly independent components without dependency circles.
+	containerBuildEnv.BuildDir = filepath.Join(kv.GetValue(kvs, "scratch_dir"), "container", "build")
+	containerBuildEnv.InstallDir = containerBuildEnv.BuildDir
+	containerBuildEnv.ScratchDir = kv.GetValue(kvs, "scratch_dir")
+	containerMPI.Container.BuildDir = containerBuildEnv.BuildDir
+	containerMPI.Container.InstallDir = containerBuildEnv.BuildDir
+	containerMPI.Container.Name = kv.GetValue(kvs, "app_name") + ".sif"
+	containerMPI.Container.Path = filepath.Join(kv.GetValue(kvs, "output_dir"), containerMPI.Container.Name)
+	containerMPI.Container.DefFile = filepath.Join(kv.GetValue(kvs, "output_dir"), kv.GetValue(kvs, "app_name")+".def")
+	containerMPI.Container.Distro = kv.GetValue(kvs, "distro")
+	containerBuildEnv.InstallDir = filepath.Join(kv.GetValue(kvs, "output_dir"), "install")
+	containerMPI.Implem.ID = kv.GetValue(kvs, "mpi")
+	containerMPI.Implem.Version = kv.GetValue(kvs, "container_mpi")
+	containerMPI.Implem.URL = getMPIURL(kv.GetValue(kvs, "mpi"), containerMPI.Implem.Version, sysCfg)
+
+	return containerBuildEnv
+}
+
+func getHybridConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) buildenv.Info {
+	containerBuildEnv := getCommonContainerConfiguration(kvs, containerMPI, sysCfg)
+	containerMPI.Container.Model = container.HybridModel
+	return containerBuildEnv
+}
+
+func getBindConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) buildenv.Info {
+	containerBuildEnv := getCommonContainerConfiguration(kvs, containerMPI, sysCfg)
+	containerMPI.Container.Model = container.BindModel
+	return containerBuildEnv
+}
+
+func installMPIonHost(kvs []kv.KV, hostBuildEnv *buildenv.Info, app *appConfig, sysCfg *sys.Config) error {
+	var hostMPI mpi.Config
+	hostBuildEnv.BuildDir = filepath.Join(kv.GetValue(kvs, "scratch_dir"), "host", "build")
+	hostMPI.Implem.ID = kv.GetValue(kvs, "mpi")
+	hostMPI.Implem.Version = kv.GetValue(kvs, "host_mpi")
+	mpiDir := hostMPI.Implem.ID + "-" + hostMPI.Implem.Version
+	hostBuildEnv.InstallDir = filepath.Join(kv.GetValue(kvs, "output_dir"), "install", mpiDir)
+	hostMPI.Implem.URL = getMPIURL(kv.GetValue(kvs, "mpi"), hostMPI.Implem.Version, sysCfg)
+
+	// todo: this should be part of hostMPI, not app
+	app.envScript = filepath.Join(kv.GetValue(kvs, "output_dir"), hostMPI.Implem.ID+"-"+hostMPI.Implem.Version+".env")
+
+	if !util.PathExists(kv.GetValue(kvs, "output_dir")) {
+		err := os.MkdirAll(kv.GetValue(kvs, "output_dir"), 0766)
+		if err != nil {
+			return fmt.Errorf("failed to create %s: %s", kv.GetValue(kvs, "output_dir"), err)
+		}
+	}
+
+	err := util.DirInit(hostBuildEnv.BuildDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize %s: %s", hostBuildEnv.BuildDir, err)
+	}
+	err = util.DirInit(hostBuildEnv.InstallDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize %s: %s", hostBuildEnv.InstallDir, err)
+	}
+
+	// Lookup the job manager configuration so we can know how to install MPI on the host
+	jobmgr := jm.Detect()
+
+	// Instantiate and call a builder
+	b, err := builder.Load(&hostMPI.Implem)
+	if err != nil {
+		return fmt.Errorf("unable to create a builder: %s", err)
+	}
+	res := b.InstallHost(&hostMPI.Implem, &jobmgr, hostBuildEnv, sysCfg)
+	if res.Err != nil {
+		return fmt.Errorf("failed to install MPI on the host: %s", res.Err)
+	}
+
+	// Generate env file
+	err = generateEnvFile(app, &hostMPI.Implem, hostBuildEnv, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to generate the environment variable: %s", err)
+	}
+
+	fmt.Printf("File to set the MPI environment: %s\n", app.envScript)
+
+	return nil
+}
+
 // ContainerizeApp will parse the configuration file specific to an app, install
 // the appropriate MPI on the host, as well as create the container.
 func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
-	var containerCfg container.Config
+	//	var containerCfg container.Config
+	var containerMPI mpi.Config
 
 	skipHostMPI := false
 
 	// Load config file
 	kvs, err := kv.LoadKeyValueConfig(sysCfg.AppContainizer)
 	if err != nil {
-		return containerCfg, fmt.Errorf("Impossible to load configuration file: %s", err)
+		return containerMPI.Container, fmt.Errorf("Impossible to load configuration file: %s", err)
 	}
 
 	// Some sanity checks
 	if kv.GetValue(kvs, "scratch_dir") == "" {
-		return containerCfg, fmt.Errorf("scratch directory is not defined")
+		return containerMPI.Container, fmt.Errorf("scratch directory is not defined")
 	}
 	if kv.GetValue(kvs, "output_dir") == "" {
-		return containerCfg, fmt.Errorf("output directory is not defined")
+		return containerMPI.Container, fmt.Errorf("output directory is not defined")
+	}
+	if kv.GetValue(kvs, "app_name") == "" {
+		return containerMPI.Container, fmt.Errorf("Application's name is not defined")
 	}
 	if kv.GetValue(kvs, "app_url") == "" {
-		return containerCfg, fmt.Errorf("Application URL is not defined")
+		return containerMPI.Container, fmt.Errorf("Application URL is not defined")
 	}
 	if kv.GetValue(kvs, "app_exe") == "" {
-		return containerCfg, fmt.Errorf("Application executable is not defined")
+		return containerMPI.Container, fmt.Errorf("Application executable is not defined")
 	}
 	if kv.GetValue(kvs, "mpi") == "" {
-		return containerCfg, fmt.Errorf("MPI implementation is not defined")
+		return containerMPI.Container, fmt.Errorf("MPI implementation is not defined")
 	}
 	if kv.GetValue(kvs, "host_mpi") == "" {
 		skipHostMPI = true
 	}
 	if kv.GetValue(kvs, "container_mpi") == "" {
-		return containerCfg, fmt.Errorf("container MPI version is not defined")
+		return containerMPI.Container, fmt.Errorf("container MPI version is not defined")
 	}
 
 	// Put together the container's metadata
-	var containerMPI mpi.Config
-	var containerBuildEnv buildenv.Info
-	var deffileCfg deffile.DefFileData
 	var hostBuildEnv buildenv.Info
-	containerCfg.Path = filepath.Join(kv.GetValue(kvs, "output_dir"), containerCfg.Name)
-	containerBuildEnv.BuildDir = filepath.Join(kv.GetValue(kvs, "scratch_dir"), "container", "build")
-	containerCfg.Name = kv.GetValue(kvs, "app_name") + ".sif"
-	containerCfg.DefFile = filepath.Join(kv.GetValue(kvs, "output_dir"), kv.GetValue(kvs, "app_name")+".def")
-	containerBuildEnv.InstallDir = filepath.Join(kv.GetValue(kvs, "output_dir"), "install")
-	containerMPI.Implem.ID = kv.GetValue(kvs, "mpi")
-	containerMPI.Implem.Version = kv.GetValue(kvs, "container_mpi")
-	containerMPI.Implem.URL = getMPIURL(kv.GetValue(kvs, "mpi"), containerMPI.Implem.Version, sysCfg)
-	deffileCfg.Distro = kv.GetValue(kvs, "distro")
-	deffileCfg.InternalEnv = &containerBuildEnv
-	deffileCfg.MpiImplm = &containerMPI.Implem
+	var containerBuildEnv buildenv.Info
+
+	switch kv.GetValue(kvs, mpiModelKey) {
+	case container.HybridModel:
+		containerBuildEnv = getHybridConfiguration(kvs, &containerMPI, sysCfg)
+	case container.BindModel:
+		containerBuildEnv = getBindConfiguration(kvs, &containerMPI, sysCfg)
+	}
 
 	// Load some generic data
 	curTime := time.Now()
@@ -228,92 +295,65 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 		url = url + "/"
 	}
 	sysCfg.Registry = url + kv.GetValue(kvs, "app_name") + ":" + curTime.Format("20060102")
+	sysCfg.ScratchDir = kv.GetValue(kvs, "scratch_dir")
 
 	// Load the app configuration
 	var app appConfig
-	app.url = kv.GetValue(kvs, "app_url")
-	app.tarball = path.Base(app.url)
-	app.exe = kv.GetValue(kvs, "app_exe")
-	app.compileCmd = kv.GetValue(kvs, "app_compile_cmd")
-	if app.url == "" {
-		return containerCfg, fmt.Errorf("application's URL is not defined")
+	app.info.Name = kv.GetValue(kvs, "app_name")
+	app.info.Source = kv.GetValue(kvs, "app_url")
+	app.tarball = path.Base(app.info.Source)
+	app.info.BinName = kv.GetValue(kvs, "app_exe")
+	app.info.InstallCmd = kv.GetValue(kvs, "app_compile_cmd")
+	if app.info.Source == "" {
+		return containerMPI.Container, fmt.Errorf("application's URL is not defined")
 	}
 	if app.tarball == "" {
-		return containerCfg, fmt.Errorf("application's package is not defined")
+		return containerMPI.Container, fmt.Errorf("application's package is not defined")
 	}
-	if app.compileCmd == "" {
-		return containerCfg, fmt.Errorf("application's compilation command is not defined")
+	if app.info.InstallCmd == "" {
+		return containerMPI.Container, fmt.Errorf("application's compilation command is not defined")
 	}
 
 	// Install MPI on host
 	if !skipHostMPI {
-		var hostMPI mpi.Config
-		hostBuildEnv.BuildDir = filepath.Join(kv.GetValue(kvs, "scratch_dir"), "host", "build")
-		hostMPI.Implem.ID = kv.GetValue(kvs, "mpi")
-		hostMPI.Implem.Version = kv.GetValue(kvs, "host_mpi")
-		deffileCfg.Path = filepath.Join(kv.GetValue(kvs, "output_dir"), "app.def")
-		mpiDir := hostMPI.Implem.ID + "-" + hostMPI.Implem.Version
-		hostBuildEnv.InstallDir = filepath.Join(kv.GetValue(kvs, "output_dir"), "install", mpiDir)
-		hostMPI.Implem.URL = getMPIURL(kv.GetValue(kvs, "mpi"), hostMPI.Implem.Version, sysCfg)
-
-		// todo: this should be part of hostMPI, not app
-		app.envScript = filepath.Join(kv.GetValue(kvs, "output_dir"), hostMPI.Implem.ID+"-"+hostMPI.Implem.Version+".env")
-
-		if !util.PathExists(kv.GetValue(kvs, "output_dir")) {
-			err := os.MkdirAll(kv.GetValue(kvs, "output_dir"), 0766)
-			if err != nil {
-				return containerCfg, fmt.Errorf("failed to create %s: %s", kv.GetValue(kvs, "output_dir"), err)
-			}
-		}
-
-		err = util.DirInit(hostBuildEnv.BuildDir)
+		err := installMPIonHost(kvs, &hostBuildEnv, &app, sysCfg)
 		if err != nil {
-			return containerCfg, fmt.Errorf("failed to initialize %s: %s", hostBuildEnv.BuildDir, err)
+			return containerMPI.Container, fmt.Errorf("failed to install MPI on host: %s", err)
 		}
-		err = util.DirInit(hostBuildEnv.InstallDir)
-		if err != nil {
-			return containerCfg, fmt.Errorf("failed to initialize %s: %s", hostBuildEnv.InstallDir, err)
-		}
-
-		// Lookup the job manager configuration so we can know how to install MPI on the host
-		jobmgr := jm.Detect()
-
-		// Instantiate and call a builder
-		b, err := builder.Load(&hostMPI.Implem)
-		if err != nil {
-			return containerCfg, fmt.Errorf("unable to create a builder: %s", err)
-		}
-		res := b.InstallHost(&hostMPI.Implem, &jobmgr, &hostBuildEnv, sysCfg)
-		if res.Err != nil {
-			return containerCfg, fmt.Errorf("failed to install MPI on the host: %s", res.Err)
-		}
-
-		// Generate env file
-		err = generateEnvFile(&app, &hostMPI.Implem, &hostBuildEnv, sysCfg)
-		if err != nil {
-			return containerCfg, fmt.Errorf("failed to generate the environment variable: %s", err)
-		}
-
-		fmt.Printf("File to set the MPI environment: %s\n", app.envScript)
 	}
 
 	// Generate images
+	log.Println("* Container configuration:")
+	log.Printf("-> Definition file: %s\n", containerMPI.Container.DefFile)
+	log.Printf("-> MPI implementation: %s\n", containerMPI.Implem.ID)
+	log.Printf("-> MPI implementation version: %s\n", containerMPI.Implem.Version)
+	log.Printf("-> Build directory: %s\n", containerMPI.Container.BuildDir)
+	log.Printf("-> Install directory: %s\n", containerMPI.Container.InstallDir)
+	log.Printf("-> Container name: %s\n", containerMPI.Container.Name)
+	log.Printf("-> Container Linux distribution: %s\n", containerMPI.Container.Distro)
+	log.Printf("-> Container MPI model: %s\n", containerMPI.Container.Model)
+	log.Printf("-> Scratch directory: %s\n", sysCfg.ScratchDir)
+
+	err = util.DirInit(sysCfg.ScratchDir)
+	if err != nil {
+		return containerMPI.Container, fmt.Errorf("failed to initialize %s: %s", sysCfg.ScratchDir, err)
+	}
 
 	err = util.DirInit(containerBuildEnv.BuildDir)
 	if err != nil {
-		return containerCfg, fmt.Errorf("failed to initialize %s: %s", containerBuildEnv.BuildDir, err)
+		return containerMPI.Container, fmt.Errorf("failed to initialize %s: %s", containerBuildEnv.BuildDir, err)
 	}
 
 	// Generate definition file
-	deffileCfg, err = generateMPIDeffile(&app, &containerMPI, sysCfg)
+	_, err = generateMPIDeffile(&app, &containerMPI, sysCfg)
 	if err != nil {
-		return containerCfg, fmt.Errorf("failed to generate definition file %s: %s", containerCfg.DefFile, err)
+		return containerMPI.Container, fmt.Errorf("failed to generate definition file %s: %s", containerMPI.Container.DefFile, err)
 	}
 
 	// Create container
-	err = container.Create(&containerCfg, sysCfg)
+	err = container.Create(&containerMPI.Container, sysCfg)
 	if err != nil {
-		return containerCfg, fmt.Errorf("failed to create container: %s", err)
+		return containerMPI.Container, fmt.Errorf("failed to create container: %s", err)
 	}
 
 	// todo: Upload image if necessary
@@ -322,22 +362,22 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 			log.Println("WARN: passphrase for key is not defined")
 		}
 
-		err = container.Sign(&containerCfg, sysCfg)
+		err = container.Sign(&containerMPI.Container, sysCfg)
 		if err != nil {
-			return containerCfg, fmt.Errorf("failed to sign image: %s", err)
+			return containerMPI.Container, fmt.Errorf("failed to sign image: %s", err)
 		}
 
-		err = container.Upload(&containerCfg, sysCfg)
+		err = container.Upload(&containerMPI.Container, sysCfg)
 		if err != nil {
-			return containerCfg, fmt.Errorf("failed to upload image: %s", err)
+			return containerMPI.Container, fmt.Errorf("failed to upload image: %s", err)
 		}
 	}
 
-	fmt.Printf("Container image path: %s\n", containerCfg.Path)
+	fmt.Printf("Container image path: %s\n", containerMPI.Container.Path)
 	/*
 		appPath := filepath.Join("/opt", app.dir, app.exe)
 		fmt.Printf("Command example to execute your application with two MPI ranks: mpirun -np 2 singularity exec " + containerMPI.ContainerPath + " " + appPath + "\n")
 	*/
 
-	return containerCfg, nil
+	return containerMPI.Container, nil
 }

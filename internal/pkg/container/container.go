@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/app"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -29,6 +31,12 @@ const (
 
 	// KeyIndex is the index of the key to use to sign images
 	KeyIndex = "SY_KEY_INDEX"
+
+	// HybridModel is the identifier used to identify the hybrid model
+	HybridModel = "hybrid"
+
+	// BindModel is the identifier used to identify the bind-mount model
+	BindModel = "bind"
 )
 
 // Config is a structure representing a container
@@ -53,6 +61,9 @@ type Config struct {
 
 	// URL is the URL of the container image to use when pulling the image from a registry
 	URL string
+
+	// Model specifies the model to follow for MPI inside the container
+	Model string
 }
 
 // CreateContainer creates a container based on a MPI configuration
@@ -94,11 +105,12 @@ func Create(container *Config, sysCfg *sys.Config) error {
 	if sysCfg.Debug {
 		err = checker.CheckDefFile(container.DefFile)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to check definition file: %s", err)
 		}
 	}
 
 	log.Printf("-> Using definition file %s", container.DefFile)
+	log.Printf("-> Running %s %s %s %s %s\n", sudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, sudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
 	cmd.Dir = container.BuildDir
@@ -232,4 +244,10 @@ func Upload(containerInfo *Config, sysCfg *sys.Config) error {
 	}
 
 	return nil
+}
+
+// GetContainerInstallDir returns the standard directory name where the container's
+// related files will be stored
+func GetContainerInstallDir(appInfo *app.Info) string {
+	return "mpi_container_" + appInfo.Name
 }

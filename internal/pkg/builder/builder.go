@@ -3,12 +3,23 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
+/*
+ * builder is a package that provides a set of APIs to help configure, install and uninstall MPI
+ * on the host or in a container.
+ */
 package builder
 
 import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"strings"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/autotools"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
@@ -24,6 +35,10 @@ import (
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
+const (
+	DefaultUbuntuDistro = "ubuntu:disco"
+)
+
 // GetConfigureExtraArgsFn is the function prootype for getting extra arguments to configure a software
 type GetConfigureExtraArgsFn func(*sys.Config) []string
 
@@ -36,9 +51,11 @@ type GetDeffileTemplateTagsFn func() deffile.TemplateTags
 // Builder gathers all the data specific to a software builder
 type Builder struct {
 	// Configure is the function to call to configure the software
-	Configure             ConfigureFn
+	Configure ConfigureFn
+
 	// GetConfigureExtraArgs is the function to call to get extra arguments for the configuration command
 	GetConfigureExtraArgs GetConfigureExtraArgsFn
+
 	// GetDeffileTemplateTags is the function to call to get all template tags
 	GetDeffileTemplateTags GetDeffileTemplateTagsFn
 }
@@ -56,7 +73,7 @@ func GenericConfigure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string
 	return nil
 }
 
-func (b *Builder) compile(mpiCfg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
+func (b *Builder) compileMPI(mpiCfg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
 	var res syexec.Result
 
 	log.Println("- Compiling MPI...")
@@ -122,7 +139,9 @@ func (b *Builder) InstallHost(mpiCfg *implem.Info, jobmgr *jm.JM, env *buildenv.
 	}
 
 	log.Printf("* %s does not exists, installing from scratch\n", env.InstallDir)
-	res.Err = env.Get(mpiCfg)
+	var s buildenv.SoftwarePackage
+	s.URL = mpiCfg.URL
+	res.Err = env.Get(&s)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to download MPI from %s: %s", mpiCfg.URL, res.Err)
 		return res
@@ -142,7 +161,7 @@ func (b *Builder) InstallHost(mpiCfg *implem.Info, jobmgr *jm.JM, env *buildenv.
 		return res
 	}
 
-	res = b.compile(mpiCfg, env, sysCfg)
+	res = b.compileMPI(mpiCfg, env, sysCfg)
 	if res.Err != nil {
 		res.Stderr = fmt.Sprintf("failed to compile MPI: %s", res.Err)
 		return res
@@ -194,35 +213,56 @@ func Load(mpiCfg *implem.Info) (Builder, error) {
 	return builder, nil
 }
 
+func (b *Builder) createDefFileFromTemplate(defFileName string, mpiCfg *implem.Info, env *buildenv.Info, container *container.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
+	var f deffile.DefFileData
+
+	templateFileName := defFileName + ".tmpl"
+	templateDefFile := filepath.Join(sysCfg.TemplateDir, templateFileName)
+	container.DefFile = filepath.Join(env.BuildDir, defFileName)
+
+	// Copy the definition file template to the temporary directory
+	err := util.CopyFile(templateDefFile, container.DefFile)
+	if err != nil {
+		return f, fmt.Errorf("failed to copy %s to %s: %s", templateDefFile, container.DefFile, err)
+	}
+
+	// Copy the test file
+	// todo: rely on app info instead of hardcoding
+	testFile := filepath.Join(sysCfg.TemplateDir, "mpitest.c")
+	destTestFile := filepath.Join(env.BuildDir, "mpitest.c")
+	err = util.CopyFile(testFile, destTestFile)
+	if err != nil {
+		return f, fmt.Errorf("failed to copy %s to %s: %s", testFile, destTestFile, err)
+	}
+
+	// Update the definition file for the specific version of MPI we are testing
+	f.Path = container.DefFile
+	f.MpiImplm = mpiCfg
+	f.InternalEnv = env
+	f.Tags = b.GetDeffileTemplateTags()
+	err = deffile.UpdateDeffileTemplate(f, sysCfg)
+	if err != nil {
+		return f, fmt.Errorf("unable to generate definition file from template: %s", err)
+	}
+
+	return f, nil
+}
+
 // GenerateDeffile generates the definition file for a MPI container.
-func (b *Builder) GenerateDeffile(mpiCfg *implem.Info, env *buildenv.Info, container *container.Config, sysCfg *sys.Config) error {
-	log.Println("- Generating Singularity defintion file...")
+func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *buildenv.Info, container *container.Config, sysCfg *sys.Config) error {
+	log.Println("- Generating Singularity definition file...")
 	// Sanity checks
 	if env.BuildDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	var defFileName string
-	var templateFileName string
+	var f deffile.DefFileData
+	var err error
 
-	switch mpiCfg.ID {
-	case implem.OMPI:
-		defFileName = "ubuntu_ompi.def"
-		if sysCfg.NetPipe {
-			defFileName = "ubuntu_ompi_netpipe.def"
-		}
-		if sysCfg.IMB {
-			defFileName = "ubuntu_ompi_imb.def"
-		}
-	case implem.MPICH:
-		defFileName = "ubuntu_mpich.def"
-		if sysCfg.NetPipe {
-			defFileName = "ubuntu_mpich_netpipe.def"
-		}
-		if sysCfg.IMB {
-			defFileName = "ubuntu_mpich_imb.def"
-		}
-	case implem.IMPI:
+	// For IMPI, we generate the definition file from a template, for other MPI implementations,
+	// we create a definition file from scratch
+	if mpiCfg.ID == implem.IMPI {
 		defFileName = "ubuntu_intel.def"
 		if sysCfg.NetPipe {
 			defFileName = "ubuntu_intel_netpipe.def"
@@ -230,48 +270,127 @@ func (b *Builder) GenerateDeffile(mpiCfg *implem.Info, env *buildenv.Info, conta
 		if sysCfg.IMB {
 			defFileName = "ubuntu_intel_imb.def"
 		}
-	default:
-		return fmt.Errorf("unsupported MPI implementation: %s", mpiCfg.ID)
+		f, err = b.createDefFileFromTemplate(defFileName, mpiCfg, env, container, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to create definition file from template: %s", err)
+		}
+	} else {
+		defFileName = "ubuntu_" + mpiCfg.ID + "_" + appInfo.Name + ".def"
+		container.DefFile = filepath.Join(env.BuildDir, defFileName)
+
+		f.Distro = DefaultUbuntuDistro
+		f.InternalEnv = env
+		f.MpiImplm = mpiCfg
+		f.Path = container.DefFile
+		f.Model = container.Model
+
+		err = deffile.CreateHybridDefFile(appInfo, &f, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to create definition file: %s", err)
+		}
 	}
 
-	templateFileName = defFileName + ".tmpl"
-	templateDefFile := filepath.Join(sysCfg.TemplateDir, templateFileName)
-	container.DefFile = filepath.Join(env.BuildDir, defFileName)
-
-	// Copy the definition file template to the temporary directory
-	err := util.CopyFile(templateDefFile, container.DefFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s to %s: %s", templateDefFile, container.DefFile, err)
-	}
-
-	// Copy the test file
-	testFile := filepath.Join(sysCfg.TemplateDir, "mpitest.c")
-	destTestFile := filepath.Join(env.BuildDir, "mpitest.c")
-	err = util.CopyFile(testFile, destTestFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s to %s: %s", testFile, destTestFile, err)
-	}
-
-	// Update the definition file for the specific version of MPI we are testing
-	var f deffile.DefFileData
-	f.Path = container.DefFile
-	f.MpiImplm = mpiCfg
-	f.InternalEnv = env
-	f.Tags = b.GetDeffileTemplateTags()
-	err = deffile.UpdateDeffileTemplate(f, sysCfg)
-	if err != nil {
-		return fmt.Errorf("unable to generate definition file from template: %s", err)
-	}
+	log.Printf("-> Definition file created: %s\n", f.Path)
 
 	// In debug mode, we save the def file that was generated to the scratch directory
 	if sysCfg.Debug {
 		backupFile := filepath.Join(sysCfg.ScratchDir, defFileName)
 		log.Printf("-> Backing up %s to %s", f.Path, backupFile)
-		err = util.CopyFile(f.Path, backupFile)
+		err := util.CopyFile(f.Path, backupFile)
 		if err != nil {
 			log.Printf("-> error while backing up %s to %s", f.Path, backupFile)
 		}
 	}
+
+	return nil
+}
+
+// CompileAppOnHost compiles and installs a given application on the host, as well
+// as the required MPI implementation when necessary
+func (b *Builder) CompileAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildEnv *buildenv.Info, sysCfg *sys.Config) error {
+	var s buildenv.SoftwarePackage
+	s.URL = appInfo.Source
+	s.Name = appInfo.Name
+	s.InstallCmd = appInfo.InstallCmd
+
+	// Check whether the required MPI is already installed, if not install it
+	var mpi buildenv.SoftwarePackage
+
+	mpi.URL = mpiCfg.Implem.URL
+	buildEnv.BuildDir = filepath.Join(sysCfg.ScratchDir, mpiCfg.Implem.ID+"-"+mpiCfg.Implem.Version)
+	if sysCfg.Persistent != "" {
+		buildEnv.InstallDir = persistent.GetPersistentHostMPIInstallDir(&mpiCfg.Implem, sysCfg)
+	} else {
+		buildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir, "install")
+	}
+
+	log.Printf("Build MPI in %s\n", buildEnv.BuildDir)
+	log.Printf("Install MPI in %s\n", buildEnv.InstallDir)
+
+	if !util.PathExists(buildEnv.BuildDir) {
+		err := util.DirInit(buildEnv.BuildDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize %s: %s", buildEnv.BuildDir, err)
+		}
+	}
+
+	jobmgr := jm.Detect()
+	res := b.InstallHost(&mpiCfg.Implem, &jobmgr, buildEnv, sysCfg)
+	if res.Err != nil {
+		return fmt.Errorf("failed to install MPI on host: %s", res.Err)
+	}
+
+	mpiCfg.Buildenv.InstallDir = buildEnv.InstallDir
+
+	// Install the app on the host
+	buildEnv.BuildDir = filepath.Join(sysCfg.ScratchDir, appInfo.Name)
+	buildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir, "install")
+	if !util.PathExists(buildEnv.BuildDir) {
+		err := util.DirInit(buildEnv.BuildDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", buildEnv.BuildDir, err)
+		}
+	}
+	if !util.PathExists(buildEnv.InstallDir) {
+		err := util.DirInit(buildEnv.InstallDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", buildEnv.InstallDir, err)
+		}
+	}
+
+	log.Printf("Build the application in %s\n", buildEnv.BuildDir)
+	log.Printf("Install the application in %s\n", buildEnv.InstallDir)
+
+	// Download the app
+	err := buildEnv.Get(&s)
+	if err != nil {
+		return fmt.Errorf("unable to get the application from %s: %s", s.URL, err)
+	}
+
+	// Unpacking the app
+	err = buildEnv.Unpack()
+	if err != nil {
+		return fmt.Errorf("unable to unpack the application %s: %s", buildEnv.SrcPath, err)
+	}
+
+	// Install the app
+	log.Println("-> Building the application...")
+	mpiPath := mpiCfg.Buildenv.GetEnvPath()
+	mpiLdPath := mpiCfg.Buildenv.GetEnvLDPath()
+	//buildEnv.Env = append([]string{"LD_LIBRARY_PATH=" + mpiLdPath}, os.Environ()...)
+	buildEnv.Env = []string{"LD_LIBRARY_PATH=" + mpiLdPath}
+	buildEnv.Env = append([]string{"PATH=" + mpiPath}, buildEnv.Env...)
+	log.Printf("* env:\n\t%s", strings.Join(buildEnv.Env, "\n\t"))
+	err = buildEnv.Install(&s)
+	if err != nil {
+		return fmt.Errorf("unable to install package: %s", err)
+	}
+
+	// todo: we do not have a good way to know if an app is actually install in InstallDir or
+	// if we must just use the binary in BuildDir. For now we assume that we use the binary in
+	// BuildDir.
+	appInfo.BinPath = filepath.Join(buildEnv.SrcDir, appInfo.BinName)
+	log.Printf("-> Successfully created %s\n", appInfo.BinPath)
 
 	return nil
 }

@@ -41,9 +41,10 @@ func CheckDefFile(path string) error {
 			return fmt.Errorf("%s is an invalid definition file", path)
 		}
 	} else {
-		return scanner.Err()
+		return fmt.Errorf("* Error while scanning the definition file: %s", scanner.Err())
 	}
 
+	log.Println("... successfully checked the definition file.")
 	return nil
 }
 

@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
@@ -42,7 +41,7 @@ func getEnvPath(mpiCfg *implem.Info, env *buildenv.Info) string {
 		return filepath.Join(env.InstallDir, impi.IntelInstallPathPrefix, "bin") + ":" + os.Getenv("PATH")
 	}
 
-	return filepath.Join(env.InstallDir, "bin") + ":" + os.Getenv("PATH")
+	return env.GetEnvPath()
 }
 
 func getEnvLDPath(mpiCfg *implem.Info, env *buildenv.Info) string {
@@ -51,7 +50,7 @@ func getEnvLDPath(mpiCfg *implem.Info, env *buildenv.Info) string {
 		return filepath.Join(env.InstallDir, impi.IntelInstallPathPrefix, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 	}
 
-	return filepath.Join(env.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
+	return env.GetEnvLDPath()
 }
 
 // NativeGetOutput retrieves the application's output after the completion of a job
@@ -92,6 +91,9 @@ func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.Sy
 	log.Printf("Using %s as LD_LIBRARY_PATH\n", newLDPath)
 	sycmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
 	sycmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
+
+	j.GetOutput = NativeGetOutput
+	j.GetError = NativeGetError
 
 	return sycmd, nil
 }
