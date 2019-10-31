@@ -66,7 +66,7 @@ func Load() (sys.Config, jm.JM, network.Info, error) {
 		return cfg, jobmgr, net, fmt.Errorf("cannot detect the directory of the binary")
 	}
 	cfg.BinPath = filepath.Dir(bin)
-	cfg.EtcDir = filepath.Join(cfg.BinPath, "etc")
+	cfg.EtcDir = filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "sylabs", "singularity-mpi", "etc")
 	cfg.TemplateDir = filepath.Join(cfg.EtcDir, "templates")
 	cfg.OfiCfgFile = filepath.Join(cfg.EtcDir, "ofi.conf")
 	cfg.CurPath, err = os.Getwd()

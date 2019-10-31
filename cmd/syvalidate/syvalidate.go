@@ -185,7 +185,7 @@ func main() {
 	}
 
 	/* Argument parsing */
-	configFile := flag.String("configfile", sysCfg.BinPath+"/etc/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
+	configFile := flag.String("configfile", sysCfg.EtcDir+"/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
 	outputFile := flag.String("outputFile", "", "Full path to the output file")
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	netpipe := flag.Bool("netpipe", false, "Run NetPipe as test")

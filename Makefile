@@ -5,19 +5,31 @@
 
 all: sympi syvalidate sycontainerize
 
-syvalidate: cmd/syvalidate/main.go
-	cd cmd/syvalidate; go build main.go
+syvalidate: 
+	cd cmd/syvalidate; go build syvalidate.go
 
-sympi: cmd/sympi/main.go
-	cd cmd/sympi; go build main.go
+sympi: cmd/sympi/sympi.go
+	cd cmd/sympi; go build sympi.go
 
-sycontainerize: cmd/sycontainerize/main.go
-	cd cmd/sycontainerize; go build main.go
+sycontainerize: 
+	cd cmd/sycontainerize; go build sycontainerize.go
 
-install:
+install: all
 	go install ./...
+	@cp -f cmd/sympi/sympi_init ${GOPATH}/bin
+
+uninstall:
+	@rm -f $(GOPATH)/bin/sympi \
+		$(GOPATH)/bin/syvalidate \
+		$(GOPATH)/bin/sycontainerize
 
 clean:
 	@rm -f main
+	@rm -f cmd/syvalidate/syvalidate \
+		cmd/syvalidate/main \
+		cmd/sympi/sympi \
+		cmd/sympi/main \
+		cmd/sycontainerize/sycontainerize \
+		cmd/sycontainerize/main
 
 distclean: clean

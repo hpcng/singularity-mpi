@@ -165,7 +165,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	}
 	defer os.RemoveAll(myHostMPICfg.Buildenv.BuildDir)
 
-	hostInstallDirPrefix := "mpi_install_" + exp.HostMPI.Version
+	hostInstallDirPrefix := "mpi_install_" + exp.HostMPI.ID + "-" + exp.HostMPI.Version
 	if sysCfg.Persistent == "" {
 		// Create a temporary directory where to install MPI
 		myHostMPICfg.Buildenv.InstallDir, err = ioutil.TempDir("", hostInstallDirPrefix+"-")
@@ -211,7 +211,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 		expRes.Pass = false
 		return false, expRes, execRes
 	}
-	if sysCfg.Persistent != "" {
+	if sysCfg.Persistent == "" {
 		defer func() {
 			execRes = b.UninstallHost(&myHostMPICfg.Implem, &myHostMPICfg.Buildenv, sysCfg)
 			if execRes.Err != nil {
@@ -222,7 +222,19 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 
 	// Create a temporary directory where the container will be built
 	myContainerMPICfg.Implem.URL = exp.ContainerMPI.URL
+	myContainerMPICfg.Container.Name = exp.ContainerMPI.ID + "-" + exp.ContainerMPI.Version + ".sif"
+	myContainerMPICfg.Container.Path = filepath.Join(myContainerMPICfg.Buildenv.InstallDir, myContainerMPICfg.Container.Name)
+	myContainerMPICfg.Container.Model = "hybrid"
+	myContainerMPICfg.Implem.ID = exp.ContainerMPI.ID
+	myContainerMPICfg.Implem.Version = exp.ContainerMPI.Version
+	myContainerMPICfg.Container.URL = sy.GetImageURL(&myContainerMPICfg.Implem, sysCfg)
+	exp.App = getAppData(&myContainerMPICfg, sysCfg)
 	containerInstallDir := container.GetContainerInstallDir(&exp.App)
+	if containerInstallDir == "" {
+		execRes.Err = fmt.Errorf("failed to get container install directory")
+		expRes.Pass = false
+		return false, expRes, execRes
+	}
 	if sysCfg.Persistent == "" {
 		myContainerMPICfg.Buildenv.BuildDir, err = ioutil.TempDir("", containerInstallDir+"-")
 		//myContainerMPICfg.Buildenv.InstallDir = myContainerMPICfg.Buildenv.BuildDir
@@ -246,14 +258,8 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	}
 	exp.ContainerBuildEnv.BuildDir = myContainerMPICfg.Buildenv.BuildDir
 	exp.ContainerBuildEnv.InstallDir = myContainerMPICfg.Buildenv.InstallDir
-	myContainerMPICfg.Container.Name = exp.ContainerMPI.ID + "-" + exp.ContainerMPI.Version + ".sif"
-	myContainerMPICfg.Container.Path = filepath.Join(myContainerMPICfg.Buildenv.InstallDir, myContainerMPICfg.Container.Name)
 	myContainerMPICfg.Container.BuildDir = myContainerMPICfg.Buildenv.BuildDir
-	myContainerMPICfg.Container.Model = "hybrid"
-	myContainerMPICfg.Implem.ID = exp.ContainerMPI.ID
-	myContainerMPICfg.Implem.Version = exp.ContainerMPI.Version
-	myContainerMPICfg.Container.URL = sy.GetImageURL(&myContainerMPICfg.Implem, sysCfg)
-	exp.App = getAppData(&myContainerMPICfg, sysCfg)
+
 	log.Println("* Container MPI configuration *")
 	log.Println("-> Build container in", exp.ContainerBuildEnv.BuildDir)
 	log.Println("-> Storing container in", exp.ContainerBuildEnv.InstallDir)
@@ -399,11 +405,15 @@ func createMPIContainer(appInfo *app.Info, mpiCfg *mpi.Config, env *buildenv.Inf
 	res.Err = b.GenerateDeffile(appInfo, &mpiCfg.Implem, env, containerCfg, sysCfg)
 	if res.Err != nil {
 		res.Stderr = fmt.Sprintf("failed to generate Singularity definition file: %s", res.Err)
+		log.Printf("%s\n", res.Stderr)
+		return res
 	}
 
 	res.Err = createContainerImage(mpiCfg, env, sysCfg)
 	if res.Err != nil {
 		res.Stderr = fmt.Sprintf("failed to create container image: %s", res.Err)
+		log.Printf("%s\n", res.Stderr)
+		return res
 	}
 
 	return res
