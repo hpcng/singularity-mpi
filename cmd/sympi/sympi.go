@@ -119,6 +119,10 @@ func updateEnvFile(file string, pathEnv string, ldlibEnv string) error {
 }
 
 func loadMPI(id string) error {
+	// We do not check the return code because it really does not matter if it fails
+	// since we do not know the prior state
+	unloadMPI()
+
 	tokens := strings.Split(id, ":")
 	if len(tokens) != 2 {
 		fmt.Println("invalid installation of MPI, execute 'sympi -list' to get the list of available installations")
