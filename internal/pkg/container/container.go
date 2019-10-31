@@ -72,7 +72,7 @@ func Create(container *Config, sysCfg *sys.Config) error {
 
 	// Some sanity checks
 	if container.BuildDir == "" {
-		return fmt.Errorf("invalid parameter(s)")
+		return fmt.Errorf("build directory is undefined")
 	}
 
 	if sysCfg.SingularityBin == "" {
@@ -256,4 +256,8 @@ func GetContainerInstallDir(appInfo *app.Info) string {
 	}
 
 	return "mpi_container_" + appInfo.Name
+}
+
+func GetContainerDefaultName(mpiID string, mpiVersion string, appName string, model string) string {
+	return mpiID + "-" + mpiVersion + "-" + appName + "-" + model
 }

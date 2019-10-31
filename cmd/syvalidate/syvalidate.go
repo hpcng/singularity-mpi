@@ -15,6 +15,10 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/app"
+	"github.com/sylabs/singularity-mpi/internal/pkg/container"
+	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/configparser"
 	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
@@ -60,6 +64,94 @@ func runExperiment(e exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig)
 	return expRes, nil
 }
 
+func createHostEnvCfg(e *exp.Config, sysCfg *sys.Config) error {
+	/* SET THE BUILD DIRECTORY */
+
+	// The build directory is always in the scratch
+	e.HostBuildEnv.BuildDir = filepath.Join(sysCfg.ScratchDir, "mpi_build_"+e.HostMPI.ID+"_"+e.HostMPI.Version)
+	// We always initialize the build directory for MPI on the host
+	err := util.DirInit(e.HostBuildEnv.BuildDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize directory %s: %s", e.HostBuildEnv.BuildDir, err)
+	}
+
+	/* SET THE INSTALL DIRECTORY */
+
+	if sysCfg.Persistent == "" {
+		// Create a temporary directory where to install MPI
+		e.HostBuildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir, "mpi_install_"+e.HostMPI.ID+"_"+e.HostMPI.Version)
+		err := util.DirInit(e.HostBuildEnv.InstallDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", e.HostBuildEnv.InstallDir, err)
+		}
+	} else {
+		e.HostBuildEnv.InstallDir = persistent.GetPersistentHostMPIInstallDir(&e.HostMPI, sysCfg)
+	}
+
+	/* SET THE SCRATCH DIRECTORY */
+
+	e.HostBuildEnv.ScratchDir = filepath.Join(sysCfg.ScratchDir, "scratch_"+e.HostMPI.ID+"_"+e.HostMPI.Version)
+	// We always initialize the scratch directory for MPI on the host
+	err = util.DirInit(e.HostBuildEnv.ScratchDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize directory %s: %s", e.HostBuildEnv.ScratchDir, err)
+	}
+
+	return nil
+}
+
+func createContainerEnvCfg(e *exp.Config, sysCfg *sys.Config) error {
+	/* SET THE INSTALL DIRECTORY */
+
+	containerName := container.GetContainerDefaultName(e.ContainerMPI.ID, e.ContainerMPI.Version, e.App.Name, container.HybridModel)
+	containerDirName := "mpi_container_" + containerName
+	if sysCfg.Persistent == "" {
+		e.ContainerBuildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir)
+		err := util.DirInit(e.ContainerBuildEnv.InstallDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", e.ContainerBuildEnv.ScratchDir, err)
+		}
+	} else {
+		e.ContainerBuildEnv.InstallDir = filepath.Join(sysCfg.Persistent, containerDirName)
+		if !util.PathExists(e.ContainerBuildEnv.InstallDir) {
+			err := os.MkdirAll(e.ContainerBuildEnv.InstallDir, 0755)
+			if err != nil {
+				return fmt.Errorf("failed to create %s: %s", e.ContainerBuildEnv.InstallDir, err)
+			}
+		}
+
+	}
+
+	/* SET THE BUILD DIRECTORY */
+
+	// At the moment, the build directory is also the install directory
+	// todo: build the container in a build directory and copy only what we need to the install directory
+	e.ContainerBuildEnv.BuildDir = e.ContainerBuildEnv.InstallDir
+
+	/* SET THE SCRATCH DIRECTORY */
+
+	e.ContainerBuildEnv.ScratchDir = filepath.Join(sysCfg.ScratchDir, "scratch_container_"+containerName)
+	// We always initialize the scratch directory for MPI on the host
+	err := util.DirInit(e.ContainerBuildEnv.ScratchDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize directory %s: %s", e.ContainerBuildEnv.ScratchDir, err)
+	}
+
+	return nil
+}
+
+func getAppData(sysCfg *sys.Config) app.Info {
+	appInfo := app.GetHelloworld(sysCfg)
+	if sysCfg.NetPipe {
+		appInfo = app.GetNetpipe(sysCfg)
+	}
+	if sysCfg.IMB {
+		appInfo = app.GetIMB(sysCfg)
+	}
+
+	return appInfo
+}
+
 func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) []results.Result {
 	var newResults []results.Result
 
@@ -79,6 +171,21 @@ func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfi
 		failure := false
 		var newRes results.Result
 		var err error
+
+		e.App = getAppData(sysCfg)
+
+		err = createHostEnvCfg(&e, sysCfg)
+		if err != nil {
+			success = false
+			failure = false
+			log.Printf("[ERROR] failed to set host build environment: %s", err)
+		}
+		err = createContainerEnvCfg(&e, sysCfg)
+		if err != nil {
+			success = false
+			failure = false
+			log.Printf("[ERROR] failed to set container build environment: %s", err)
+		}
 
 		var i int
 		for i = 0; i < sysCfg.Nrun; i++ {
@@ -232,7 +339,12 @@ func main() {
 	mpiImplem := exp.GetMPIImplemFromExperiments(experiments)
 
 	scratchPath := "scratch-" + mpiImplem
-	sysCfg.ScratchDir = filepath.Join(sysCfg.BinPath, scratchPath)
+	sysCfg.ScratchDir = filepath.Join(sys.GetSympiDir(), scratchPath)
+	// If the scratch dir exists, we delete it to start fresh
+	err = util.DirInit(sysCfg.ScratchDir)
+	if err != nil {
+		log.Fatalf("failed to initialize directory %s: %s", sysCfg.ScratchDir, err)
+	}
 
 	// Save the options passed in through the command flags
 	if sysCfg.Debug {
