@@ -288,6 +288,9 @@ func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *b
 	} else {
 		defFileName = "ubuntu_" + mpiCfg.ID + "_" + appInfo.Name + ".def"
 		container.DefFile = filepath.Join(env.BuildDir, defFileName)
+		if container.AppExe == "" {
+			container.AppExe = appInfo.BinPath
+		}
 
 		f.Distro = DefaultUbuntuDistro
 		f.InternalEnv = env

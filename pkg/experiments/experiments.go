@@ -6,13 +6,9 @@
 package experiments
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
@@ -21,7 +17,6 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
-	"github.com/sylabs/singularity-mpi/internal/pkg/job"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
@@ -83,42 +78,6 @@ func GetMPIImplemFromExperiments(experiments []Config) (*implem.Info, error) {
 	return &experiments[0].HostMPI, nil
 }
 
-func saveErrorDetails(exp Config, sysCfg *sys.Config, res *syexec.Result) error {
-	experimentName := exp.HostMPI.Version + "-" + exp.ContainerMPI.Version
-	targetDir := filepath.Join(sysCfg.BinPath, "errors", exp.HostMPI.ID, experimentName)
-
-	// If the directory exists, we delete it to start fresh
-	err := util.DirInit(targetDir)
-	if err != nil {
-		return fmt.Errorf("impossible to initialize directory %s: %s", targetDir, err)
-	}
-
-	stderrFile := filepath.Join(targetDir, "stderr.txt")
-	stdoutFile := filepath.Join(targetDir, "stdout.txt")
-
-	fstderr, err := os.Create(stderrFile)
-	if err != nil {
-		return err
-	}
-	defer fstderr.Close()
-	_, err = fstderr.WriteString(res.Stderr)
-	if err != nil {
-		return err
-	}
-
-	fstdout, err := os.Create(stdoutFile)
-	if err != nil {
-		return err
-	}
-	defer fstdout.Close()
-	_, err = fstdout.WriteString(res.Stdout)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func createNewContainer(myContainerMPICfg *mpi.Config, exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) syexec.Result {
 	var res syexec.Result
 
@@ -132,7 +91,7 @@ func createNewContainer(myContainerMPICfg *mpi.Config, exp Config, sysCfg *sys.C
 
 	res = createMPIContainer(&exp.App, myContainerMPICfg, &exp.ContainerBuildEnv, sysCfg)
 	if res.Err != nil {
-		err := saveErrorDetails(exp, sysCfg, &res)
+		err := launcher.SaveErrorDetails(&exp.HostMPI, &myContainerMPICfg.Implem, sysCfg, &res)
 		if err != nil {
 			res.Err = fmt.Errorf("failed to save error details: %s", err)
 			return res
@@ -152,10 +111,19 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	var expRes results.Result
 	var err error
 
-	/* CREATE THE HOST MPI CONFIGURATION */
-
 	myHostMPICfg.Buildenv = exp.HostBuildEnv
 	myHostMPICfg.Implem = exp.HostMPI
+
+	myContainerMPICfg.Implem = exp.ContainerMPI
+	myContainerMPICfg.Buildenv = exp.ContainerBuildEnv
+	myContainerMPICfg.Container.Name = container.GetContainerDefaultName(exp.ContainerMPI.ID, exp.ContainerMPI.Version, exp.App.Name, container.HybridModel) + ".sif"
+	myContainerMPICfg.Container.Path = filepath.Join(myContainerMPICfg.Buildenv.InstallDir, myContainerMPICfg.Container.Name)
+	myContainerMPICfg.Container.Model = container.HybridModel
+	myContainerMPICfg.Container.URL = sy.GetImageURL(&myContainerMPICfg.Implem, sysCfg)
+	myContainerMPICfg.Container.BuildDir = myContainerMPICfg.Buildenv.BuildDir
+	myContainerMPICfg.Container.InstallDir = myContainerMPICfg.Buildenv.InstallDir
+
+	/* INSTALL MPI ON THE HOST */
 
 	log.Println("* Host MPI Configuration *")
 	log.Println("-> Building MPI in", myHostMPICfg.Buildenv.BuildDir)
@@ -163,8 +131,6 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	log.Println("-> MPI implementation:", myHostMPICfg.Implem.ID)
 	log.Println("-> MPI version:", myHostMPICfg.Implem.Version)
 	log.Println("-> MPI URL:", myHostMPICfg.Implem.URL)
-
-	/* INSTALL MPI ON THE HOST */
 
 	jobmgr := jm.Detect()
 	b, err := builder.Load(&myHostMPICfg.Implem)
@@ -176,7 +142,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	execRes = b.InstallHost(&myHostMPICfg.Implem, &jobmgr, &myHostMPICfg.Buildenv, sysCfg)
 	if execRes.Err != nil {
 		execRes.Err = fmt.Errorf("failed to install host MPI: %s", execRes.Err)
-		err = saveErrorDetails(exp, sysCfg, &execRes)
+		err = launcher.SaveErrorDetails(&exp.HostMPI, &myContainerMPICfg.Implem, sysCfg, &execRes)
 		if err != nil {
 			execRes.Err = fmt.Errorf("failed to save error details: %s", err)
 		}
@@ -191,15 +157,6 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 			}
 		}()
 	}
-
-	myContainerMPICfg.Implem = exp.ContainerMPI
-	myContainerMPICfg.Buildenv = exp.ContainerBuildEnv
-	myContainerMPICfg.Container.Name = container.GetContainerDefaultName(exp.ContainerMPI.ID, exp.ContainerMPI.Version, exp.App.Name, container.HybridModel) + ".sif"
-	myContainerMPICfg.Container.Path = filepath.Join(myContainerMPICfg.Buildenv.InstallDir, myContainerMPICfg.Container.Name)
-	myContainerMPICfg.Container.Model = container.HybridModel
-	myContainerMPICfg.Container.URL = sy.GetImageURL(&myContainerMPICfg.Implem, sysCfg)
-	myContainerMPICfg.Container.BuildDir = myContainerMPICfg.Buildenv.BuildDir
-	myContainerMPICfg.Container.InstallDir = myContainerMPICfg.Buildenv.InstallDir
 
 	log.Println("* Container MPI configuration *")
 	log.Println("-> Build container in", exp.ContainerBuildEnv.BuildDir)
@@ -229,51 +186,8 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 
 	log.Println("Running Test(s)...")
 
-	// Regex to catch errors where mpirun returns 0 but is known to have failed because displaying the help message
-	var re = regexp.MustCompile(`^(\n?)Usage:`)
-
-	// mpiJob describes the job
-	var mpiJob job.Job
-	mpiJob.HostCfg = &myHostMPICfg.Implem
-	mpiJob.Container = &myContainerMPICfg.Container
-	mpiJob.App.BinPath = exp.App.BinPath
-	mpiJob.NNodes = 2
-	mpiJob.NP = 2
-
-	// We submit the job
-	var submitCmd syexec.SyCmd
-	submitCmd, execRes.Err = launcher.PrepareLaunchCmd(&mpiJob, &jobmgr, &exp.HostBuildEnv, sysCfg)
-	if execRes.Err != nil {
-		execRes.Err = fmt.Errorf("failed to prepare the launch command: %s", execRes.Err)
-		return false, expRes, execRes
-	}
-
-	var stdout, stderr bytes.Buffer
-	submitCmd.Cmd.Stdout = &stdout
-	submitCmd.Cmd.Stderr = &stderr
-	if err != nil {
-		execRes.Err = fmt.Errorf("failed to prepare the launch command: %s", err)
-		expRes.Pass = false
-		return false, expRes, execRes
-	}
-	defer submitCmd.CancelFn()
-	err = submitCmd.Cmd.Run()
-	// Get the command out/err
-	execRes.Stderr = stderr.String()
-	execRes.Stdout = stdout.String()
-	// And add the job out/err (for when we actually use a real job manager such as Slurm)
-	execRes.Stdout += mpiJob.GetOutput(&mpiJob, sysCfg)
-	execRes.Stderr += mpiJob.GetError(&mpiJob, sysCfg)
-	if err != nil || submitCmd.Ctx.Err() == context.DeadlineExceeded || re.Match(stdout.Bytes()) {
-		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
-		execRes.Err = err
-		err = saveErrorDetails(exp, sysCfg, &execRes)
-		if err != nil {
-			execRes.Err = fmt.Errorf("impossible to cleanly handle error: %s", err)
-			expRes.Pass = false
-			return false, expRes, execRes
-		}
-		expRes.Pass = false
+	expRes, execRes = launcher.Run(&exp.App, &myHostMPICfg, &exp.HostBuildEnv, &myContainerMPICfg, &jobmgr, sysCfg)
+	if !expRes.Pass {
 		return false, expRes, execRes
 	}
 

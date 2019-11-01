@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -17,7 +18,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/app"
+	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
@@ -31,32 +36,51 @@ import (
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
-func displayInstalled(dir string) error {
+func getHostMPIInstalls(entries []os.FileInfo) ([]string, error) {
 	var hostInstalls []string
+
+	for _, entry := range entries {
+		matched, err := regexp.MatchString(`mpi_install_.*`, entry.Name())
+		if err != nil {
+			return hostInstalls, fmt.Errorf("failed to parse %s: %s", entry, err)
+		}
+		if matched {
+			s := strings.Replace(entry.Name(), "mpi_install_", "", -1)
+			hostInstalls = append(hostInstalls, strings.Replace(s, "-", ":", -1))
+		}
+	}
+
+	return hostInstalls, nil
+}
+
+func getContainerInstalls(entries []os.FileInfo) ([]string, error) {
 	var containers []string
+	for _, entry := range entries {
+		matched, err := regexp.MatchString(`mpi_container_.*`, entry.Name())
+		if err != nil {
+			return containers, fmt.Errorf("failed to parse %s: %s", entry, err)
+		}
+		if matched {
+			containers = append(containers, strings.Replace(entry.Name(), "mpi_container_", "", -1))
+		}
+	}
+	return containers, nil
+}
+
+func displayInstalled(dir string) error {
 
 	entries, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %s", dir, err)
 	}
 
-	for _, entry := range entries {
-		matched, err := regexp.MatchString(`mpi_install_.*`, entry.Name())
-		if err != nil {
-			return fmt.Errorf("failed to parse %s: %s", entry, err)
-		}
-		if matched {
-			s := strings.Replace(entry.Name(), "mpi_install_", "", -1)
-			hostInstalls = append(hostInstalls, strings.Replace(s, "-", ":", -1))
-		}
-
-		matched, err = regexp.MatchString(`mpi_container_.*`, entry.Name())
-		if err != nil {
-			return fmt.Errorf("failed to parse %s: %s", entry, err)
-		}
-		if matched {
-			containers = append(containers, strings.Replace(entry.Name(), "mpi_container_", "", -1))
-		}
+	hostInstalls, err := getHostMPIInstalls(entries)
+	if err != nil {
+		return fmt.Errorf("unable to get the install of MPIs installed on the host: %s", err)
+	}
+	containers, err := getContainerInstalls(entries)
+	if err != nil {
+		return fmt.Errorf("unable to get the list of containers stored on the host: %s", err)
 	}
 
 	if len(hostInstalls) > 0 {
@@ -137,41 +161,7 @@ func getMPIDetails(desc string) (string, string) {
 	return tokens[0], tokens[1]
 }
 
-func loadMPI(id string) error {
-	// We do not check the return code because it really does not matter if it fails
-	// since we do not know the prior state
-	unloadMPI()
-
-	implem, ver := getMPIDetails(id)
-	if implem == "" || ver == "" {
-		fmt.Println("invalid installation of MPI, execute 'sympi -list' to get the list of available installations")
-		return nil
-	}
-
-	sympiDir := sys.GetSympiDir()
-	mpiBaseDir := filepath.Join(sympiDir, "mpi_install_"+implem+"-"+ver)
-	mpiBinDir := filepath.Join(mpiBaseDir, "bin")
-	mpiLibDir := filepath.Join(mpiBaseDir, "lib")
-
-	path := os.Getenv("PATH")
-	path = mpiBinDir + ":" + path
-	ldlib := os.Getenv("LD_LIBRARY_PATH")
-	ldlib = mpiLibDir + ":" + ldlib
-
-	file, err := getEnvFile()
-	if err != nil || !util.FileExists(file) {
-		return fmt.Errorf("file %s does not exist", file)
-	}
-
-	err = updateEnvFile(file, path, ldlib)
-	if err != nil {
-		return fmt.Errorf("failed to update %s: %s", file, err)
-	}
-
-	return nil
-}
-
-func unloadMPI() error {
+func getCleanedUpEnvVars() ([]string, []string) {
 	var newPath []string
 	var newLDLIB []string
 
@@ -193,6 +183,49 @@ func unloadMPI() error {
 			newLDLIB = append(newLDLIB, t)
 		}
 	}
+
+	return newPath, newLDLIB
+}
+
+func loadMPI(id string) error {
+	// We can change the env multiple times during the execution of a single command
+	// and these modifications will NOT be reflected in the actual environment until
+	// we exit the command and let bash do some magic to update it. Fortunately, we
+	// know that we can have one and only one MPI in the environment of a single time
+	// so when we load a MPI, we make sure that we remove a previous load changes.
+	cleanedPath, cleanedLDLIB := getCleanedUpEnvVars()
+
+	implem, ver := getMPIDetails(id)
+	if implem == "" || ver == "" {
+		fmt.Println("invalid installation of MPI, execute 'sympi -list' to get the list of available installations")
+		return nil
+	}
+
+	sympiDir := sys.GetSympiDir()
+	mpiBaseDir := filepath.Join(sympiDir, "mpi_install_"+implem+"-"+ver)
+	mpiBinDir := filepath.Join(mpiBaseDir, "bin")
+	mpiLibDir := filepath.Join(mpiBaseDir, "lib")
+
+	path := strings.Join(cleanedPath, ":")
+	ldlib := strings.Join(cleanedLDLIB, ":")
+	path = mpiBinDir + ":" + path
+	ldlib = mpiLibDir + ":" + ldlib
+
+	file, err := getEnvFile()
+	if err != nil || !util.FileExists(file) {
+		return fmt.Errorf("file %s does not exist", file)
+	}
+
+	err = updateEnvFile(file, path, ldlib)
+	if err != nil {
+		return fmt.Errorf("failed to update %s: %s", file, err)
+	}
+
+	return nil
+}
+
+func unloadMPI() error {
+	newPath, newLDLIB := getCleanedUpEnvVars()
 
 	// Sanity checks
 	if len(newPath) == 0 {
@@ -221,13 +254,12 @@ func getDefaultSysConfig() sys.Config {
 	return sysCfg
 }
 
-func uninstallMPIfromHost(mpiDesc string) error {
+func uninstallMPIfromHost(mpiDesc string, sysCfg *sys.Config) error {
 	var mpiCfg implem.Info
 	mpiCfg.ID, mpiCfg.Version = getMPIDetails(mpiDesc)
-	sysCfg := getDefaultSysConfig()
 
 	var buildEnv buildenv.Info
-	err := buildenv.CreateDefaultHostEnvCfg(&buildEnv, &mpiCfg, &sysCfg)
+	err := buildenv.CreateDefaultHostEnvCfg(&buildEnv, &mpiCfg, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to set host build environment: %s", err)
 	}
@@ -237,7 +269,7 @@ func uninstallMPIfromHost(mpiDesc string) error {
 		return fmt.Errorf("failed to load a builder: %s", err)
 	}
 
-	execRes := b.UninstallHost(&mpiCfg, &buildEnv, &sysCfg)
+	execRes := b.UninstallHost(&mpiCfg, &buildEnv, sysCfg)
 	if execRes.Err != nil {
 		return fmt.Errorf("failed to install MPI on the host: %s", execRes.Err)
 	}
@@ -245,11 +277,10 @@ func uninstallMPIfromHost(mpiDesc string) error {
 	return nil
 }
 
-func installMPIonHost(mpiDesc string) error {
+func installMPIonHost(mpiDesc string, sysCfg *sys.Config) error {
 	var mpiCfg implem.Info
 	mpiCfg.ID, mpiCfg.Version = getMPIDetails(mpiDesc)
 
-	sysCfg := getDefaultSysConfig()
 	sysCfg.ScratchDir = buildenv.GetDefaultScratchDir(&mpiCfg)
 	// When installing a MPI with sympi, we are always in persistent mode
 	sysCfg.Persistent = sys.GetSympiDir()
@@ -259,7 +290,7 @@ func installMPIonHost(mpiDesc string) error {
 		return fmt.Errorf("unable to initialize scratch directory %s: %s", sysCfg.ScratchDir, err)
 	}
 
-	mpiConfigFile := mpi.GetMPIConfigFile(mpiCfg.ID, &sysCfg)
+	mpiConfigFile := mpi.GetMPIConfigFile(mpiCfg.ID, sysCfg)
 	kvs, err := kv.LoadKeyValueConfig(mpiConfigFile)
 	if err != nil {
 		return fmt.Errorf("unable to load configuration file %s: %s", mpiConfigFile, err)
@@ -272,13 +303,13 @@ func installMPIonHost(mpiDesc string) error {
 	}
 
 	var buildEnv buildenv.Info
-	err = buildenv.CreateDefaultHostEnvCfg(&buildEnv, &mpiCfg, &sysCfg)
+	err = buildenv.CreateDefaultHostEnvCfg(&buildEnv, &mpiCfg, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to set host build environment: %s", err)
 	}
 
 	jobmgr := jm.Detect()
-	execRes := b.InstallHost(&mpiCfg, &jobmgr, &buildEnv, &sysCfg)
+	execRes := b.InstallHost(&mpiCfg, &jobmgr, &buildEnv, sysCfg)
 	if execRes.Err != nil {
 		return fmt.Errorf("failed to install MPI on the host: %s", execRes.Err)
 	}
@@ -286,14 +317,153 @@ func installMPIonHost(mpiDesc string) error {
 	return nil
 }
 
+func findCompatibleMPI(targetMPI implem.Info) (implem.Info, error) {
+	var mpi implem.Info
+	mpi.ID = targetMPI.ID
+
+	entries, err := ioutil.ReadDir(sys.GetSympiDir())
+	if err != nil {
+		return mpi, fmt.Errorf("failed to read %s: %s", sys.GetSympiDir(), err)
+	}
+
+	hostInstalls, err := getHostMPIInstalls(entries)
+	if err != nil {
+		return mpi, fmt.Errorf("unable to get the install of MPIs installed on the host: %s", err)
+	}
+
+	versionDetails := strings.Split(targetMPI.Version, ".")
+	major := versionDetails[0]
+	ver := ""
+	for _, entry := range hostInstalls {
+		tokens := strings.Split(entry, ":")
+		if tokens[0] == targetMPI.ID {
+			if tokens[1] == targetMPI.Version {
+				// We have the exact version available
+				mpi.Version = tokens[1]
+				return mpi, nil
+			}
+			if ver == "" {
+				t := strings.Split(tokens[1], ".")
+				if t[0] >= major && ver == "" {
+					// At first we accept any version from the same major release
+					ver = tokens[1]
+				}
+			} else {
+				if ver < tokens[1] {
+					ver = tokens[1]
+				}
+			}
+		}
+	}
+
+	if ver != "" {
+		mpi.Version = ver
+		return mpi, nil
+	}
+
+	return mpi, fmt.Errorf("no compatible version available")
+}
+
+func RunContainer(containerDesc string, sysCfg *sys.Config) error {
+	// When running containers with sympi, we are always in the context of persistent installs
+	sysCfg.Persistent = sys.GetSympiDir()
+
+	// Get the full path to the image
+	containerInstallDir := filepath.Join(sys.GetSympiDir(), "mpi_container_"+containerDesc)
+	imgPath := filepath.Join(containerInstallDir, containerDesc+".sif")
+	if !util.FileExists(imgPath) {
+		return fmt.Errorf("%s does not exist", imgPath)
+	}
+
+	// Inspect the image and extract the metadata
+	if sysCfg.SingularityBin == "" {
+		log.Fatalf("singularity bin not defined")
+	}
+
+	fmt.Printf("Analyzing %s to figure out the correct configuration for execution...\n", imgPath)
+	containerInfo, containerMPI, err := container.GetMetadata(imgPath, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to extract container's metadata: %s", err)
+	}
+	fmt.Printf("Container based on %s %s\n", containerMPI.ID, containerMPI.Version)
+	fmt.Println("Looking for available compatible version...")
+	hostMPI, err := findCompatibleMPI(containerMPI)
+	if err != nil {
+		fmt.Printf("No compatible MPI found, installing the appropriate version...")
+		err := installMPIonHost(containerMPI.ID+"-"+containerMPI.Version, sysCfg)
+		if err != nil {
+			return fmt.Errorf("failed to install %s %s", containerMPI.ID, containerMPI.Version)
+		}
+		hostMPI.ID = containerMPI.ID
+		hostMPI.Version = containerMPI.Version
+	} else {
+		fmt.Printf("%s %s was found on the host as a compatible version\n", hostMPI.ID, hostMPI.Version)
+	}
+
+	err = loadMPI(hostMPI.ID + ":" + hostMPI.Version)
+	if err != nil {
+		return fmt.Errorf("failed to load MPI %s %s on host: %s", hostMPI.ID, hostMPI.Version, err)
+	}
+
+	var hostBuildEnv buildenv.Info
+	err = buildenv.CreateDefaultHostEnvCfg(&hostBuildEnv, &hostMPI, sysCfg)
+	var hostMPICfg mpi.Config
+	var containerMPICfg mpi.Config
+	var appInfo app.Info
+
+	hostMPICfg.Implem = hostMPI
+	hostMPICfg.Buildenv = hostBuildEnv
+
+	containerMPICfg.Implem = containerMPI
+	containerMPICfg.Container = containerInfo
+	appInfo.Name = containerDesc
+	appInfo.BinPath = containerInfo.AppExe
+
+	// Launch the container
+	jobmgr := jm.Detect()
+	expRes, execRes := launcher.Run(&appInfo, &hostMPICfg, &hostBuildEnv, &containerMPICfg, &jobmgr, sysCfg)
+	if !expRes.Pass {
+		return fmt.Errorf("failed to run the container: %s (stdout: %s; stderr: %s)", execRes.Err, execRes.Stderr, execRes.Stdout)
+	}
+
+	fmt.Printf("Execution successful!\n\tStdout: %s\n\tStderr: %s\n", execRes.Stderr, execRes.Stdout)
+
+	return nil
+}
+
 func main() {
+	verbose := flag.Bool("v", false, "Enable verbose mode")
+	debug := flag.Bool("d", false, "Enable debug mode")
 	list := flag.Bool("list", false, "List all MPI on the host and all MPI containers")
 	load := flag.String("load", "", "The version of MPI installed on the host to load")
 	unload := flag.Bool("unload", false, "Unload the current version of the MPI that is used")
 	install := flag.String("install", "", "MPI implementation to install, e.g., openmpi:4.0.2")
 	uninstall := flag.String("uninstall", "", "MPI implementation to uninstall, e.g., openmpi:4.0.2")
+	run := flag.String("run", "", "Run a container")
 
 	flag.Parse()
+
+	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
+	logFile := util.OpenLogFile("sympi")
+	defer logFile.Close()
+	if *verbose || *debug {
+		nultiWriters := io.MultiWriter(os.Stdout, logFile)
+		log.SetOutput(nultiWriters)
+	} else {
+		log.SetOutput(ioutil.Discard)
+	}
+
+	sysCfg := getDefaultSysConfig()
+	sysCfg.Verbose = *verbose
+	sysCfg.Debug = *debug
+	// Save the options passed in through the command flags
+	if sysCfg.Debug {
+		sysCfg.Verbose = true
+		err := checker.CheckSystemConfig()
+		if err != nil {
+			log.Fatalf("the system is not correctly setup: %s", err)
+		}
+	}
 
 	sympiDir := sys.GetSympiDir()
 
@@ -316,16 +486,24 @@ func main() {
 	}
 
 	if *install != "" {
-		err := installMPIonHost(*install)
+		err := installMPIonHost(*install, &sysCfg)
 		if err != nil {
 			log.Fatalf("impossible to install %s: %s", *install, err)
 		}
 	}
 
 	if *uninstall != "" {
-		err := uninstallMPIfromHost(*uninstall)
+		err := uninstallMPIfromHost(*uninstall, &sysCfg)
 		if err != nil {
 			log.Fatalf("impossible to uninstall %s: %s", *install, err)
 		}
+	}
+
+	if *run != "" {
+		err := RunContainer(*run, &sysCfg)
+		if err != nil {
+			log.Fatalf("impossible to run container %s: %s", *run, err)
+		}
+
 	}
 }
