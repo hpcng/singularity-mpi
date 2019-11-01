@@ -16,8 +16,8 @@ import (
 	"strconv"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
+	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
-	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/configparser"
@@ -62,42 +62,6 @@ func runExperiment(e exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig)
 	}
 
 	return expRes, nil
-}
-
-func createHostEnvCfg(e *exp.Config, sysCfg *sys.Config) error {
-	/* SET THE BUILD DIRECTORY */
-
-	// The build directory is always in the scratch
-	e.HostBuildEnv.BuildDir = filepath.Join(sysCfg.ScratchDir, "mpi_build_"+e.HostMPI.ID+"_"+e.HostMPI.Version)
-	// We always initialize the build directory for MPI on the host
-	err := util.DirInit(e.HostBuildEnv.BuildDir)
-	if err != nil {
-		return fmt.Errorf("failed to initialize directory %s: %s", e.HostBuildEnv.BuildDir, err)
-	}
-
-	/* SET THE INSTALL DIRECTORY */
-
-	if sysCfg.Persistent == "" {
-		// Create a temporary directory where to install MPI
-		e.HostBuildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir, "mpi_install_"+e.HostMPI.ID+"_"+e.HostMPI.Version)
-		err := util.DirInit(e.HostBuildEnv.InstallDir)
-		if err != nil {
-			return fmt.Errorf("failed to initialize directory %s: %s", e.HostBuildEnv.InstallDir, err)
-		}
-	} else {
-		e.HostBuildEnv.InstallDir = persistent.GetPersistentHostMPIInstallDir(&e.HostMPI, sysCfg)
-	}
-
-	/* SET THE SCRATCH DIRECTORY */
-
-	e.HostBuildEnv.ScratchDir = filepath.Join(sysCfg.ScratchDir, "scratch_"+e.HostMPI.ID+"_"+e.HostMPI.Version)
-	// We always initialize the scratch directory for MPI on the host
-	err = util.DirInit(e.HostBuildEnv.ScratchDir)
-	if err != nil {
-		return fmt.Errorf("failed to initialize directory %s: %s", e.HostBuildEnv.ScratchDir, err)
-	}
-
-	return nil
 }
 
 func createContainerEnvCfg(e *exp.Config, sysCfg *sys.Config) error {
@@ -174,7 +138,7 @@ func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfi
 
 		e.App = getAppData(sysCfg)
 
-		err = createHostEnvCfg(&e, sysCfg)
+		err = buildenv.CreateDefaultHostEnvCfg(&e.HostBuildEnv, &e.HostMPI, sysCfg)
 		if err != nil {
 			success = false
 			failure = false
@@ -336,10 +300,11 @@ func main() {
 
 	// Figure out all the experiments that need to be executed
 	experiments := getListExperiments(config)
-	mpiImplem := exp.GetMPIImplemFromExperiments(experiments)
-
-	scratchPath := "scratch-" + mpiImplem
-	sysCfg.ScratchDir = filepath.Join(sys.GetSympiDir(), scratchPath)
+	mpiImplem, err := exp.GetMPIImplemFromExperiments(experiments)
+	if err != nil {
+		log.Fatalf("failed to figure out the type of experiment: %s", err)
+	}
+	sysCfg.ScratchDir = buildenv.GetDefaultScratchDir(mpiImplem)
 	// If the scratch dir exists, we delete it to start fresh
 	err = util.DirInit(sysCfg.ScratchDir)
 	if err != nil {
@@ -362,7 +327,7 @@ func main() {
 	}
 
 	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
-	logFile := util.OpenLogFile(mpiImplem)
+	logFile := util.OpenLogFile(mpiImplem.ID)
 	defer logFile.Close()
 	if sysCfg.Verbose {
 		nultiWriters := io.MultiWriter(os.Stdout, logFile)
@@ -386,7 +351,7 @@ func main() {
 		sysCfg.TargetUbuntuDistro = distro
 	}
 
-	err = testMPI(mpiImplem, experiments, sysCfg, syConfig)
+	err = testMPI(mpiImplem.ID, experiments, sysCfg, syConfig)
 	if err != nil {
 		log.Fatalf("failed test MPI: %s", err)
 	}

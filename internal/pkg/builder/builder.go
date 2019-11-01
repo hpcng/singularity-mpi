@@ -141,6 +141,7 @@ func (b *Builder) InstallHost(mpiCfg *implem.Info, jobmgr *jm.JM, env *buildenv.
 	log.Printf("* %s does not exists, installing from scratch\n", env.InstallDir)
 	var s buildenv.SoftwarePackage
 	s.URL = mpiCfg.URL
+	s.Name = mpiCfg.ID + "-" + mpiCfg.Version
 	res.Err = env.Get(&s)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to download MPI from %s: %s", mpiCfg.URL, res.Err)

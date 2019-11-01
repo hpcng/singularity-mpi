@@ -71,16 +71,16 @@ func postExecutionDataMgt(sysCfg *sys.Config, output string) (string, error) {
 
 // GetImplemFromExperiments returns the MPI implementation that is associated
 // to the experiments
-func GetMPIImplemFromExperiments(experiments []Config) string {
+func GetMPIImplemFromExperiments(experiments []Config) (*implem.Info, error) {
 	// Fair assumption: all experiments are based on the same MPI
 	// implementation (we actually check for that and the implementation
 	// is only included in the experiment structure so that the structure
 	// is self-contained).
 	if len(experiments) == 0 {
-		return ""
+		return nil, fmt.Errorf("no experiment")
 	}
 
-	return experiments[0].HostMPI.ID
+	return &experiments[0].HostMPI, nil
 }
 
 func saveErrorDetails(exp Config, sysCfg *sys.Config, res *syexec.Result) error {

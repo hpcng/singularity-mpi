@@ -7,11 +7,11 @@ package implem
 
 const (
 	// OMPI is the identifier for Open MPI
-	OMPI  = "openmpi"
+	OMPI = "openmpi"
 	// MPICH is the identifier for MPICH
 	MPICH = "mpich"
 	// IMPI is the identifier for Intel MPI
-	IMPI  = "intel"
+	IMPI = "intel"
 )
 
 // Info gathers all data about a specific MPI implementation

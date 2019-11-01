@@ -62,3 +62,7 @@ func GetMpirunArgs(myHostMPICfg *implem.Info, app *app.Info, container *containe
 
 	return args, nil
 }
+
+func GetMPIConfigFile(id string, sysCfg *sys.Config) string {
+	return filepath.Join(sysCfg.EtcDir, id+".conf")
+}

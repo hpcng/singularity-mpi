@@ -17,6 +17,16 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
+	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
+	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
@@ -199,10 +209,62 @@ func unloadMPI() error {
 	return nil
 }
 
+func installMPIonHost(mpiDesc string) error {
+	var mpiCfg implem.Info
+
+	tokens := strings.Split(mpiDesc, ":")
+	if len(tokens) != 2 {
+		return fmt.Errorf("%s is not the correct format to describe an MPI implementation (e.g., 'openmpi:4.0.2'", mpiDesc)
+	}
+
+	sysCfg, _, _, err := launcher.Load()
+	if err != nil {
+		log.Fatalf("unable to load configuration: %s", err)
+
+	}
+
+	mpiCfg.ID = tokens[0]
+	mpiCfg.Version = tokens[1]
+	// With sympi, we are always in persistent mode
+	sysCfg.Persistent = sys.GetSympiDir()
+	sysCfg.ScratchDir = buildenv.GetDefaultScratchDir(&mpiCfg)
+	err := util.DirInit(sysCfg.ScratchDir)
+	if err != nil {
+		return fmt.Errorf("unable to initialize scratch directory %s: %s", sysCfg.ScratchDir, err)
+	}
+
+	mpiConfigFile := mpi.GetMPIConfigFile(mpiCfg.ID, &sysCfg)
+	kvs, err := kv.LoadKeyValueConfig(mpiConfigFile)
+	if err != nil {
+		return fmt.Errorf("unable to load configuration file %s: %s", mpiConfigFile, err)
+	}
+	mpiCfg.URL = kv.GetValue(kvs, mpiCfg.Version)
+
+	b, err := builder.Load(&mpiCfg)
+	if err != nil {
+		return fmt.Errorf("failed to load a builder: %s", err)
+	}
+
+	var buildEnv buildenv.Info
+	err = buildenv.CreateDefaultHostEnvCfg(&buildEnv, &mpiCfg, &sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to set host build environment: %s", err)
+	}
+
+	jobmgr := jm.Detect()
+	execRes := b.InstallHost(&mpiCfg, &jobmgr, &buildEnv, &sysCfg)
+	if execRes.Err != nil {
+		return fmt.Errorf("failed to install MPI on the host: %s", execRes.Err)
+	}
+
+	return nil
+}
+
 func main() {
 	list := flag.Bool("list", false, "List all MPI on the host and all MPI containers")
 	load := flag.String("load", "", "The version of MPI installed on the host to load")
 	unload := flag.Bool("unload", false, "Unload the current version of the MPI that is used")
+	install := flag.String("install", "", "MPI implementation to install, e.g., openmpi:4.0.2")
 
 	flag.Parse()
 
@@ -223,6 +285,13 @@ func main() {
 		err := unloadMPI()
 		if err != nil {
 			log.Fatalf("impossible to unload MPI: %s", err)
+		}
+	}
+
+	if *install != "" {
+		err := installMPIonHost(*install)
+		if err != nil {
+			log.Fatalf("impossible to install %s: %s", *install, err)
 		}
 	}
 }
