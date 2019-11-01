@@ -16,7 +16,7 @@ Finally, check-out the source code: `cd $HOME/go/src/github.com/sylabs && git cl
 
 # Preparation of the host system
 
-Two mode of operations are currently supported:
+Two modes of operations are currently supported:
 - building the container images on the host, guaranteeing the latest version of the operating system used by the containers,
 - using pre-made images from our registry, in case images cannot be built on the host.
 
@@ -46,9 +46,12 @@ The Singularity-mpi tool ignores any version of MPI manually installed on the ho
 
 # Compilation
 
-To compile the tool, you just need to execute the following command from the top directory of the source code: `cd $HOME/go/src/github.com/sylabs/singularity-mpi && make`.
-This will generate a `main` binary that can be used to run various experiments. Running `./main -h` command will display a help 
-message that describes different options you could use while running the tool. 
+To compile the tool, you just need to execute the following command from the top directory of the source code: `cd $HOME/go/src/github.com/sylabs/singularity-mpi && make install`.
+This will generate three different binaries: `syvalidate`, `sycontainerize` and `sympi`.
+The `syvalidate` command can be used to run various experiments. Running the `syvalidate -h` command displays a help 
+message that describes different options you could use while running the tool.
+The `sycontainerize` command can be used to easily create a container for any application. Running the `sycontainerize -h` command displays a help message that describes how the command can be used.
+The `sympi` command can be used to easily manage various MPI installation on the host and easily execute containers using MPI. Running the `sympi -h` command displays a help message that describes how the command can be used.
 
 # Experiments
 
