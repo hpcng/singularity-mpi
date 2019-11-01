@@ -7,7 +7,10 @@ package main
 
 import (
 	"flag"
+	"io"
+	"io/ioutil"
 	"log"
+	"os"
 	"strconv"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
@@ -71,6 +74,16 @@ func main() {
 		if err != nil {
 			log.Fatalf("the system is not correctly setup: %s", err)
 		}
+	}
+
+	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
+	logFile := util.OpenLogFile("sycontainerize")
+	defer logFile.Close()
+	if sysCfg.Verbose {
+		nultiWriters := io.MultiWriter(os.Stdout, logFile)
+		log.SetOutput(nultiWriters)
+	} else {
+		log.SetOutput(ioutil.Discard)
 	}
 
 	_, err = containizer.ContainerizeApp(&sysCfg)
