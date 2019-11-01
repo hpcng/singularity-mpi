@@ -326,7 +326,7 @@ func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) er
 
 	if sysCfg.Persistent == "" {
 		// Create a temporary directory where to install MPI
-		env.InstallDir = filepath.Join(sysCfg.ScratchDir, "mpi_install_"+mpi.ID+"_"+mpi.Version)
+		env.InstallDir = filepath.Join(sysCfg.ScratchDir, "mpi_install_"+mpi.ID+"-"+mpi.Version)
 		err := util.DirInit(env.InstallDir)
 		if err != nil {
 			return fmt.Errorf("failed to initialize directory %s: %s", env.InstallDir, err)

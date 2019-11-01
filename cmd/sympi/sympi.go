@@ -128,19 +128,21 @@ func updateEnvFile(file string, pathEnv string, ldlibEnv string) error {
 	return nil
 }
 
+func getMPIDetails(desc string) (string, string) {
+	tokens := strings.Split(desc, ":")
+	if len(tokens) != 2 {
+		fmt.Println("invalid MPI, execute 'sympi -list' to get the list of available installations")
+		return "", ""
+	}
+	return tokens[0], tokens[1]
+}
+
 func loadMPI(id string) error {
 	// We do not check the return code because it really does not matter if it fails
 	// since we do not know the prior state
 	unloadMPI()
 
-	tokens := strings.Split(id, ":")
-	if len(tokens) != 2 {
-		fmt.Println("invalid installation of MPI, execute 'sympi -list' to get the list of available installations")
-		return nil
-	}
-	implem := tokens[0]
-	ver := tokens[1]
-
+	implem, ver := getMPIDetails(id)
 	if implem == "" || ver == "" {
 		fmt.Println("invalid installation of MPI, execute 'sympi -list' to get the list of available installations")
 		return nil
@@ -209,25 +211,49 @@ func unloadMPI() error {
 	return nil
 }
 
-func installMPIonHost(mpiDesc string) error {
-	var mpiCfg implem.Info
-
-	tokens := strings.Split(mpiDesc, ":")
-	if len(tokens) != 2 {
-		return fmt.Errorf("%s is not the correct format to describe an MPI implementation (e.g., 'openmpi:4.0.2'", mpiDesc)
-	}
-
+func getDefaultSysConfig() sys.Config {
 	sysCfg, _, _, err := launcher.Load()
 	if err != nil {
 		log.Fatalf("unable to load configuration: %s", err)
 
 	}
 
-	mpiCfg.ID = tokens[0]
-	mpiCfg.Version = tokens[1]
-	// With sympi, we are always in persistent mode
-	sysCfg.Persistent = sys.GetSympiDir()
+	return sysCfg
+}
+
+func uninstallMPIfromHost(mpiDesc string) error {
+	var mpiCfg implem.Info
+	mpiCfg.ID, mpiCfg.Version = getMPIDetails(mpiDesc)
+	sysCfg := getDefaultSysConfig()
+
+	var buildEnv buildenv.Info
+	err := buildenv.CreateDefaultHostEnvCfg(&buildEnv, &mpiCfg, &sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to set host build environment: %s", err)
+	}
+
+	b, err := builder.Load(&mpiCfg)
+	if err != nil {
+		return fmt.Errorf("failed to load a builder: %s", err)
+	}
+
+	execRes := b.UninstallHost(&mpiCfg, &buildEnv, &sysCfg)
+	if execRes.Err != nil {
+		return fmt.Errorf("failed to install MPI on the host: %s", execRes.Err)
+	}
+
+	return nil
+}
+
+func installMPIonHost(mpiDesc string) error {
+	var mpiCfg implem.Info
+	mpiCfg.ID, mpiCfg.Version = getMPIDetails(mpiDesc)
+
+	sysCfg := getDefaultSysConfig()
 	sysCfg.ScratchDir = buildenv.GetDefaultScratchDir(&mpiCfg)
+	// When installing a MPI with sympi, we are always in persistent mode
+	sysCfg.Persistent = sys.GetSympiDir()
+
 	err := util.DirInit(sysCfg.ScratchDir)
 	if err != nil {
 		return fmt.Errorf("unable to initialize scratch directory %s: %s", sysCfg.ScratchDir, err)
@@ -265,6 +291,7 @@ func main() {
 	load := flag.String("load", "", "The version of MPI installed on the host to load")
 	unload := flag.Bool("unload", false, "Unload the current version of the MPI that is used")
 	install := flag.String("install", "", "MPI implementation to install, e.g., openmpi:4.0.2")
+	uninstall := flag.String("uninstall", "", "MPI implementation to uninstall, e.g., openmpi:4.0.2")
 
 	flag.Parse()
 
@@ -292,6 +319,13 @@ func main() {
 		err := installMPIonHost(*install)
 		if err != nil {
 			log.Fatalf("impossible to install %s: %s", *install, err)
+		}
+	}
+
+	if *uninstall != "" {
+		err := uninstallMPIfromHost(*uninstall)
+		if err != nil {
+			log.Fatalf("impossible to uninstall %s: %s", *install, err)
 		}
 	}
 }

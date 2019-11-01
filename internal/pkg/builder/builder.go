@@ -12,6 +12,7 @@ package builder
 import (
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -186,6 +187,15 @@ func (b *Builder) UninstallHost(mpiCfg *implem.Info, env *buildenv.Info, sysCfg 
 
 		if mpiCfg.ID == implem.IMPI {
 			return impi.RunScript(env, sysCfg, "uninstall")
+		} else {
+			mpiDir := filepath.Join(sys.GetSympiDir(), env.InstallDir)
+			if util.PathExists(mpiDir) {
+				err := os.RemoveAll(mpiDir)
+				if err != nil {
+					res.Err = err
+					return res
+				}
+			}
 		}
 	} else {
 		log.Printf("Persistent installs mode, not uninstalling MPI from host")
