@@ -364,7 +364,7 @@ func findCompatibleMPI(targetMPI implem.Info) (implem.Info, error) {
 	return mpi, fmt.Errorf("no compatible version available")
 }
 
-func RunContainer(containerDesc string, sysCfg *sys.Config) error {
+func runContainer(containerDesc string, sysCfg *sys.Config) error {
 	// When running containers with sympi, we are always in the context of persistent installs
 	sysCfg.Persistent = sys.GetSympiDir()
 
@@ -500,7 +500,7 @@ func main() {
 	}
 
 	if *run != "" {
-		err := RunContainer(*run, &sysCfg)
+		err := runContainer(*run, &sysCfg)
 		if err != nil {
 			log.Fatalf("impossible to run container %s: %s", *run, err)
 		}

@@ -63,6 +63,7 @@ func GetMpirunArgs(myHostMPICfg *implem.Info, app *app.Info, container *containe
 	return args, nil
 }
 
+// GetMPIConfigFile returns the path to the configuration file for a given MPI implementation
 func GetMPIConfigFile(id string, sysCfg *sys.Config) string {
 	return filepath.Join(sysCfg.EtcDir, id+".conf")
 }

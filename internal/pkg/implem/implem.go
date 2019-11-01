@@ -8,16 +8,25 @@ package implem
 const (
 	// OMPI is the identifier for Open MPI
 	OMPI = "openmpi"
+
 	// MPICH is the identifier for MPICH
 	MPICH = "mpich"
+
 	// IMPI is the identifier for Intel MPI
 	IMPI = "intel"
 )
 
 // Info gathers all data about a specific MPI implementation
 type Info struct {
-	ID      string
+	// ID is the string idenfifying the MPI implementation
+	ID string
+
+	// Version is the version of the MPI implementation
 	Version string
-	URL     string
+
+	// URL is the URL to use to get the MPI implementation
+	URL string
+
+	// Tarball is the name of the tarball of the MPI implementation
 	Tarball string
 }

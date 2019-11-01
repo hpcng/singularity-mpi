@@ -116,6 +116,7 @@ func Load() (sys.Config, jm.JM, network.Info, error) {
 	return cfg, jobmgr, net, nil
 }
 
+// SaveErrorDetails gathers and stores execution details when the execution of a container failed.
 func SaveErrorDetails(hostMPI *implem.Info, containerMPI *implem.Info, sysCfg *sys.Config, res *syexec.Result) error {
 	experimentName := hostMPI.Version + "-" + containerMPI.Version
 	targetDir := filepath.Join(sysCfg.BinPath, "errors", hostMPI.ID, experimentName)
@@ -152,6 +153,7 @@ func SaveErrorDetails(hostMPI *implem.Info, containerMPI *implem.Info, sysCfg *s
 	return nil
 }
 
+// Run executes a container with a specific version of MPI on the host
 func Run(appInfo *app.Info, hostMPI *mpi.Config, hostBuildEnv *buildenv.Info, containerMPI *mpi.Config, jobmgr *jm.JM, sysCfg *sys.Config) (results.Result, syexec.Result) {
 	var execRes syexec.Result
 	var expRes results.Result

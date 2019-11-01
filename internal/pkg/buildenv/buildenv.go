@@ -311,6 +311,7 @@ func (env *Info) Install(p *SoftwarePackage) error {
 	return nil
 }
 
+// CreateDefaultHostEnvCfg returns the default configuration to install/manage MPI on the host
 func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) error {
 	/* SET THE BUILD DIRECTORY */
 
@@ -347,6 +348,7 @@ func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) er
 	return nil
 }
 
+// GetDefaultScratchDir returns the default directory to use as scratch directory
 func GetDefaultScratchDir(mpi *implem.Info) string {
 	return filepath.Join(sys.GetSympiDir(), "scratch-"+mpi.ID)
 }
