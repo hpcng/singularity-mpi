@@ -18,6 +18,8 @@ import (
 )
 
 // Config represents a configuration of MPI for a target platform
+// todo: revisit this, i do not think we actually need it, i think it would make everything
+// easier if we were dealing with the different elements separately
 type Config struct {
 	// Implem gathers information about the MPI implementation to use
 	Implem implem.Info
@@ -59,4 +61,9 @@ func GetMpirunArgs(myHostMPICfg *implem.Info, app *app.Info, container *containe
 	}
 
 	return args, nil
+}
+
+// GetMPIConfigFile returns the path to the configuration file for a given MPI implementation
+func GetMPIConfigFile(id string, sysCfg *sys.Config) string {
+	return filepath.Join(sysCfg.EtcDir, id+".conf")
 }

@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
@@ -64,6 +65,9 @@ type Config struct {
 
 	// Model specifies the model to follow for MPI inside the container
 	Model string
+
+	// AppExe is the command to start the application in the container
+	AppExe string
 }
 
 // CreateContainer creates a container based on a MPI configuration
@@ -72,7 +76,7 @@ func Create(container *Config, sysCfg *sys.Config) error {
 
 	// Some sanity checks
 	if container.BuildDir == "" {
-		return fmt.Errorf("invalid parameter(s)")
+		return fmt.Errorf("build directory is undefined")
 	}
 
 	if sysCfg.SingularityBin == "" {
@@ -249,5 +253,64 @@ func Upload(containerInfo *Config, sysCfg *sys.Config) error {
 // GetContainerInstallDir returns the standard directory name where the container's
 // related files will be stored
 func GetContainerInstallDir(appInfo *app.Info) string {
+	// Sanity checks
+	if appInfo.Name == "" {
+		log.Println("[WARN] Undefined application name")
+		return ""
+	}
+
 	return "mpi_container_" + appInfo.Name
+}
+
+// GetContainerDefaultName returns the default name for any container based on the configuration details
+func GetContainerDefaultName(mpiID string, mpiVersion string, appName string, model string) string {
+	return mpiID + "-" + mpiVersion + "-" + appName + "-" + model
+}
+
+func parseInspectOutput(output string) (Config, implem.Info) {
+	var cfg Config
+	var mpiCfg implem.Info
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "MPI_Implementation: ") {
+			mpiCfg.ID = strings.Replace(line, "MPI_Implementation: ", "", -1)
+		}
+		if strings.Contains(line, "MPI_Version: ") {
+			mpiCfg.Version = strings.Replace(line, "MPI_Version: ", "", -1)
+		}
+		if strings.Contains(line, "Model: ") {
+			cfg.Model = strings.Replace(line, "Model: ", "", -1)
+		}
+		if strings.Contains(line, "Linux_version: ") {
+			cfg.Distro = strings.Replace(line, "Linux_version: ", "", -1)
+		}
+		if strings.Contains(line, "App_exe: ") {
+			cfg.AppExe = strings.Replace(line, "App_exe: ", "", -1)
+		}
+	}
+
+	return cfg, mpiCfg
+}
+
+// GetMetadata inspects the container's image and gathers all the available metadata
+func GetMetadata(imgPath string, sysCfg *sys.Config) (Config, implem.Info, error) {
+	var metadata Config
+	var mpiCfg implem.Info
+
+	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
+	defer cancel()
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "inspect", imgPath)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		return metadata, mpiCfg, fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
+	}
+
+	metadata, mpiCfg = parseInspectOutput(stdout.String())
+	metadata.Path = imgPath
+	return metadata, mpiCfg, nil
 }

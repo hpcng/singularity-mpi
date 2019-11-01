@@ -12,6 +12,7 @@ package builder
 import (
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -141,6 +142,7 @@ func (b *Builder) InstallHost(mpiCfg *implem.Info, jobmgr *jm.JM, env *buildenv.
 	log.Printf("* %s does not exists, installing from scratch\n", env.InstallDir)
 	var s buildenv.SoftwarePackage
 	s.URL = mpiCfg.URL
+	s.Name = mpiCfg.ID + "-" + mpiCfg.Version
 	res.Err = env.Get(&s)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to download MPI from %s: %s", mpiCfg.URL, res.Err)
@@ -185,6 +187,15 @@ func (b *Builder) UninstallHost(mpiCfg *implem.Info, env *buildenv.Info, sysCfg 
 
 		if mpiCfg.ID == implem.IMPI {
 			return impi.RunScript(env, sysCfg, "uninstall")
+		} else {
+			mpiDir := filepath.Join(sys.GetSympiDir(), env.InstallDir)
+			if util.PathExists(mpiDir) {
+				err := os.RemoveAll(mpiDir)
+				if err != nil {
+					res.Err = err
+					return res
+				}
+			}
 		}
 	} else {
 		log.Printf("Persistent installs mode, not uninstalling MPI from host")
@@ -277,6 +288,9 @@ func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *b
 	} else {
 		defFileName = "ubuntu_" + mpiCfg.ID + "_" + appInfo.Name + ".def"
 		container.DefFile = filepath.Join(env.BuildDir, defFileName)
+		if container.AppExe == "" {
+			container.AppExe = appInfo.BinPath
+		}
 
 		f.Distro = DefaultUbuntuDistro
 		f.InternalEnv = env

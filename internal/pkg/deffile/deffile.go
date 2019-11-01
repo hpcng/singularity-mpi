@@ -122,7 +122,15 @@ func AddLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 	}
 
 	if deffile.Model == container.BindModel {
+		// When dealing with the bind model, we explicitly copy the binary in /opt
 		_, err = f.WriteString("\tApp_exe /opt/" + app.BinName + "\n")
+		if err != nil {
+			return err
+		}
+	} else {
+		// When dealing with the hybrid model, we do not really know the path to the executable
+		// so we rely on the data in the app.Config structure (from user input)
+		_, err = f.WriteString("\tApp_exe " + app.BinPath + "\n")
 		if err != nil {
 			return err
 		}

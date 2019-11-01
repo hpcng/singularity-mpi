@@ -1,0 +1,11 @@
+#!/bin/bash
+#
+
+MYPID=$$
+touch /tmp/sympi_${MYPID}
+echo "Welcome to SyMPI (pid: ${MYPID}), please make sure to execute 'exit' to terminate"
+PROMPT_COMMAND="source /tmp/sympi_${MYPID}" /bin/bash
+CHILDPID=$!
+wait ${CHILDPID}
+rm -f /tmp/sympi_${MYPID}
+exit

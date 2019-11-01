@@ -15,24 +15,21 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/app"
+	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/container"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/configparser"
 	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
-	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/network"
+	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
-	"github.com/sylabs/singularity-mpi/internal/pkg/slurm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
-	"github.com/sylabs/singularity-mpi/pkg/containizer"
 	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
-)
-
-const (
-	defaultUbuntuDistro = "disco"
 )
 
 func getListExperiments(config *configparser.Config) []exp.Config {
@@ -67,6 +64,58 @@ func runExperiment(e exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig)
 	return expRes, nil
 }
 
+func createContainerEnvCfg(e *exp.Config, sysCfg *sys.Config) error {
+	/* SET THE INSTALL DIRECTORY */
+
+	containerName := container.GetContainerDefaultName(e.ContainerMPI.ID, e.ContainerMPI.Version, e.App.Name, container.HybridModel)
+	containerDirName := "mpi_container_" + containerName
+	if sysCfg.Persistent == "" {
+		e.ContainerBuildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir)
+		err := util.DirInit(e.ContainerBuildEnv.InstallDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", e.ContainerBuildEnv.ScratchDir, err)
+		}
+	} else {
+		e.ContainerBuildEnv.InstallDir = filepath.Join(sysCfg.Persistent, containerDirName)
+		if !util.PathExists(e.ContainerBuildEnv.InstallDir) {
+			err := os.MkdirAll(e.ContainerBuildEnv.InstallDir, 0755)
+			if err != nil {
+				return fmt.Errorf("failed to create %s: %s", e.ContainerBuildEnv.InstallDir, err)
+			}
+		}
+
+	}
+
+	/* SET THE BUILD DIRECTORY */
+
+	// At the moment, the build directory is also the install directory
+	// todo: build the container in a build directory and copy only what we need to the install directory
+	e.ContainerBuildEnv.BuildDir = e.ContainerBuildEnv.InstallDir
+
+	/* SET THE SCRATCH DIRECTORY */
+
+	e.ContainerBuildEnv.ScratchDir = filepath.Join(sysCfg.ScratchDir, "scratch_container_"+containerName)
+	// We always initialize the scratch directory for MPI on the host
+	err := util.DirInit(e.ContainerBuildEnv.ScratchDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize directory %s: %s", e.ContainerBuildEnv.ScratchDir, err)
+	}
+
+	return nil
+}
+
+func getAppData(sysCfg *sys.Config) app.Info {
+	appInfo := app.GetHelloworld(sysCfg)
+	if sysCfg.NetPipe {
+		appInfo = app.GetNetpipe(sysCfg)
+	}
+	if sysCfg.IMB {
+		appInfo = app.GetIMB(sysCfg)
+	}
+
+	return appInfo
+}
+
 func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) []results.Result {
 	var newResults []results.Result
 
@@ -86,6 +135,21 @@ func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfi
 		failure := false
 		var newRes results.Result
 		var err error
+
+		e.App = getAppData(sysCfg)
+
+		err = buildenv.CreateDefaultHostEnvCfg(&e.HostBuildEnv, &e.HostMPI, sysCfg)
+		if err != nil {
+			success = false
+			failure = false
+			log.Printf("[ERROR] failed to set host build environment: %s", err)
+		}
+		err = createContainerEnvCfg(&e, sysCfg)
+		if err != nil {
+			success = false
+			failure = false
+			log.Printf("[ERROR] failed to set container build environment: %s", err)
+		}
 
 		var i int
 		for i = 0; i < sysCfg.Nrun; i++ {
@@ -184,72 +248,21 @@ func testMPI(mpiImplem string, experiments []exp.Config, sysCfg sys.Config, syCo
 	return nil
 }
 
-func load() (sys.Config, jm.JM, network.Info, error) {
-	var cfg sys.Config
-	var jobmgr jm.JM
-	var net network.Info
-
-	/* Figure out the directory of this binary */
-	bin, err := os.Executable()
-	if err != nil {
-		return cfg, jobmgr, net, fmt.Errorf("cannot detect the directory of the binary")
-	}
-	cfg.BinPath = filepath.Dir(bin)
-	cfg.EtcDir = filepath.Join(cfg.BinPath, "etc")
-	cfg.TemplateDir = filepath.Join(cfg.EtcDir, "templates")
-	cfg.OfiCfgFile = filepath.Join(cfg.EtcDir, "ofi.conf")
-	cfg.CurPath, err = os.Getwd()
-	if err != nil {
-		return cfg, jobmgr, net, fmt.Errorf("cannot detect current directory")
-	}
-
-	cfg.SyConfigFile = sy.GetPathToSyMPIConfigFile()
-	if util.PathExists(cfg.SyConfigFile) {
-		kvs, err := kv.LoadKeyValueConfig(cfg.SyConfigFile)
-		if err != nil {
-			return cfg, jobmgr, net, fmt.Errorf("unable to load the tool's configuration: %s", err)
-		}
-		if kv.GetValue(kvs, slurm.EnabledKey) != "" {
-			cfg.SlurmEnabled, err = strconv.ParseBool(kv.GetValue(kvs, slurm.EnabledKey))
-			if err != nil {
-				return cfg, jobmgr, net, fmt.Errorf("failed to load the Slurm configuration: %s", err)
-			}
-		}
-	} else {
-		log.Println("-> Creating configuration file...")
-		path, err := sy.CreateMPIConfigFile()
-		if err != nil {
-			return cfg, jobmgr, net, fmt.Errorf("failed to create configuration file: %s", err)
-		}
-		log.Printf("... %s successfully created\n", path)
-	}
-
-	// Load the job manager component first
-	jobmgr = jm.Detect()
-
-	// Load the network configuration
-	_ = network.Detect(&cfg)
-
-	return cfg, jobmgr, net, nil
-}
-
 func main() {
-	sysCfg, _, _, err := load()
+	sysCfg, _, _, err := launcher.Load()
 	if err != nil {
 		log.Fatalf("unable to load configuration: %s", err)
 
 	}
 
 	/* Argument parsing */
-	configFile := flag.String("configfile", sysCfg.BinPath+"/etc/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
+	configFile := flag.String("configfile", sysCfg.EtcDir+"/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
 	outputFile := flag.String("outputFile", "", "Full path to the output file")
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	netpipe := flag.Bool("netpipe", false, "Run NetPipe as test")
 	imb := flag.Bool("imb", false, "Run IMB as test")
 	debug := flag.Bool("d", false, "Enable debug mode")
 	nRun := flag.Int("n", 1, "Number of iterations")
-	appContainizer := flag.String("app-containizer", "", "Path to the configuration file for automatically containerization an application")
-	upload := flag.Bool("upload", false, "Upload generated images (appropriate configuration files need to specify the registry's URL")
 	persistent := flag.Bool("persistent-installs", false, "Keep the MPI installations on the host and the container images in the specified directory (instead of deleting everything once an experiment terminates). Default is '~/.sympi', set SYMPI_INSTALL_DIR to overwrite")
 
 	flag.Parse()
@@ -259,16 +272,10 @@ func main() {
 	sysCfg.NetPipe = *netpipe
 	sysCfg.IMB = *imb
 	sysCfg.Nrun = *nRun
-	sysCfg.AppContainizer = *appContainizer
-	sysCfg.Upload = *upload
 	sysCfg.Verbose = *verbose
 	sysCfg.Debug = *debug
 	if *persistent {
-		if os.Getenv("SYMPI_INSTALL_DIR") != "" {
-			sysCfg.Persistent = os.Getenv("SYMPI_INSTALL_DIR")
-		} else {
-			sysCfg.Persistent = filepath.Join(os.Getenv("HOME"), ".sympi")
-		}
+		sysCfg.Persistent = sys.GetSympiDir()
 	}
 
 	config, err := cfg.Parse(sysCfg.ConfigFile)
@@ -293,10 +300,16 @@ func main() {
 
 	// Figure out all the experiments that need to be executed
 	experiments := getListExperiments(config)
-	mpiImplem := exp.GetMPIImplemFromExperiments(experiments)
-
-	scratchPath := "scratch-" + mpiImplem
-	sysCfg.ScratchDir = filepath.Join(sysCfg.BinPath, scratchPath)
+	mpiImplem, err := exp.GetMPIImplemFromExperiments(experiments)
+	if err != nil {
+		log.Fatalf("failed to figure out the type of experiment: %s", err)
+	}
+	sysCfg.ScratchDir = buildenv.GetDefaultScratchDir(mpiImplem)
+	// If the scratch dir exists, we delete it to start fresh
+	err = util.DirInit(sysCfg.ScratchDir)
+	if err != nil {
+		log.Fatalf("failed to initialize directory %s: %s", sysCfg.ScratchDir, err)
+	}
 
 	// Save the options passed in through the command flags
 	if sysCfg.Debug {
@@ -314,7 +327,7 @@ func main() {
 	}
 
 	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
-	logFile := util.OpenLogFile(mpiImplem)
+	logFile := util.OpenLogFile(mpiImplem.ID)
 	defer logFile.Close()
 	if sysCfg.Verbose {
 		nultiWriters := io.MultiWriter(os.Stdout, logFile)
@@ -330,7 +343,7 @@ func main() {
 
 	// Try to detect the local distro. If we cannot, it is not a big deal but we know that for example having
 	// different versions of Ubuntu in containers and host may lead to some libc problems
-	sysCfg.TargetUbuntuDistro = defaultUbuntuDistro // By default, containers will use a specific Ubuntu distro
+	sysCfg.TargetUbuntuDistro = sys.DefaultUbuntuDistro // By default, containers will use a specific Ubuntu distro
 	distro, err := checker.CheckDistro()
 	if err != nil {
 		log.Println("[INFO] Cannot detect the local distro")
@@ -338,16 +351,8 @@ func main() {
 		sysCfg.TargetUbuntuDistro = distro
 	}
 
-	// Run the requested tool capability
-	if sysCfg.AppContainizer != "" {
-		_, err := containizer.ContainerizeApp(&sysCfg)
-		if err != nil {
-			log.Fatalf("failed to create container for app: %s", err)
-		}
-	} else {
-		err := testMPI(mpiImplem, experiments, sysCfg, syConfig)
-		if err != nil {
-			log.Fatalf("failed test MPI: %s", err)
-		}
+	err = testMPI(mpiImplem.ID, experiments, sysCfg, syConfig)
+	if err != nil {
+		log.Fatalf("failed test MPI: %s", err)
 	}
 }

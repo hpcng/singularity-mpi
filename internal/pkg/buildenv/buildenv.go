@@ -23,6 +23,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
@@ -306,4 +309,46 @@ func (env *Info) Install(p *SoftwarePackage) error {
 	}
 
 	return nil
+}
+
+// CreateDefaultHostEnvCfg returns the default configuration to install/manage MPI on the host
+func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) error {
+	/* SET THE BUILD DIRECTORY */
+
+	// The build directory is always in the scratch
+	env.BuildDir = filepath.Join(sysCfg.ScratchDir, "mpi_build_"+mpi.ID+"_"+mpi.Version)
+	// We always initialize the build directory for MPI on the host
+	err := util.DirInit(env.BuildDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize directory %s: %s", env.BuildDir, err)
+	}
+
+	/* SET THE INSTALL DIRECTORY */
+
+	if sysCfg.Persistent == "" {
+		// Create a temporary directory where to install MPI
+		env.InstallDir = filepath.Join(sysCfg.ScratchDir, "mpi_install_"+mpi.ID+"-"+mpi.Version)
+		err := util.DirInit(env.InstallDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", env.InstallDir, err)
+		}
+	} else {
+		env.InstallDir = persistent.GetPersistentHostMPIInstallDir(mpi, sysCfg)
+	}
+
+	/* SET THE SCRATCH DIRECTORY */
+
+	env.ScratchDir = filepath.Join(sysCfg.ScratchDir, "scratch_"+mpi.ID+"_"+mpi.Version)
+	// We always initialize the scratch directory for MPI on the host
+	err = util.DirInit(env.ScratchDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize directory %s: %s", env.ScratchDir, err)
+	}
+
+	return nil
+}
+
+// GetDefaultScratchDir returns the default directory to use as scratch directory
+func GetDefaultScratchDir(mpi *implem.Info) string {
+	return filepath.Join(sys.GetSympiDir(), "scratch-"+mpi.ID)
 }
