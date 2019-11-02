@@ -181,9 +181,7 @@ func getCommonContainerConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysC
 	containerBuildEnv.InstallDir = filepath.Join(kv.GetValue(kvs, "output_dir"), "install")
 	containerMPI.Implem.ID = kv.GetValue(kvs, "mpi")
 	containerMPI.Implem.Version = kv.GetValue(kvs, "container_mpi")
-	fmt.Printf("Getting URL from: %s %s\n", kv.GetValue(kvs, "mpi"), containerMPI.Implem.Version)
 	containerMPI.Implem.URL = getMPIURL(kv.GetValue(kvs, "mpi"), containerMPI.Implem.Version, sysCfg)
-	fmt.Printf("URL: %s\n", containerMPI.Implem.URL)
 
 	return containerBuildEnv
 }
@@ -208,7 +206,6 @@ func installMPIonHost(kvs []kv.KV, hostBuildEnv *buildenv.Info, app *appConfig, 
 	mpiDir := hostMPI.Implem.ID + "-" + hostMPI.Implem.Version
 	hostBuildEnv.InstallDir = filepath.Join(kv.GetValue(kvs, "output_dir"), "install", mpiDir)
 	hostMPI.Implem.URL = getMPIURL(kv.GetValue(kvs, "mpi"), hostMPI.Implem.Version, sysCfg)
-	fmt.Printf("CHECKME HOSt MPI URL: %s\n", hostMPI.Implem.URL)
 
 	// todo: this should be part of hostMPI, not app
 	app.envScript = filepath.Join(kv.GetValue(kvs, "output_dir"), hostMPI.Implem.ID+"-"+hostMPI.Implem.Version+".env")
