@@ -68,6 +68,12 @@ type Config struct {
 
 	// AppExe is the command to start the application in the container
 	AppExe string
+
+	// MPIDir is the directory in the container where MPI is supposed to be installed or mounted
+	MPIDir string
+
+	// Binds is the set of bind options to use while starting the container
+	Binds []string
 }
 
 // CreateContainer creates a container based on a MPI configuration
@@ -287,6 +293,9 @@ func parseInspectOutput(output string) (Config, implem.Info) {
 		}
 		if strings.Contains(line, "App_exe: ") {
 			cfg.AppExe = strings.Replace(line, "App_exe: ", "", -1)
+		}
+		if strings.Contains(line, "MPI_Directory: ") {
+			cfg.MPIDir = strings.Replace(line, "MPI_Directory: ", "", -1)
 		}
 	}
 

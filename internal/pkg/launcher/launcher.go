@@ -43,7 +43,7 @@ type Info struct {
 }
 
 // PrepareLaunchCmd interacts with a job manager backend to figure out how to launch a job
-func PrepareLaunchCmd(j *job.Job, jobmgr *jm.JM, hostEnv *buildenv.Info, sysCfg *sys.Config) (syexec.SyCmd, error) {
+func prepareLaunchCmd(j *job.Job, jobmgr *jm.JM, hostEnv *buildenv.Info, sysCfg *sys.Config) (syexec.SyCmd, error) {
 	var cmd syexec.SyCmd
 
 	launchCmd, err := jobmgr.Submit(j, hostEnv, sysCfg)
@@ -158,9 +158,6 @@ func Run(appInfo *app.Info, hostMPI *mpi.Config, hostBuildEnv *buildenv.Info, co
 	var execRes syexec.Result
 	var expRes results.Result
 
-	// Regex to catch errors where mpirun returns 0 but is known to have failed because displaying the help message
-	var re = regexp.MustCompile(`^(\n?)Usage:`)
-
 	// mpiJob describes the job
 	var mpiJob job.Job
 	mpiJob.HostCfg = &hostMPI.Implem
@@ -171,7 +168,7 @@ func Run(appInfo *app.Info, hostMPI *mpi.Config, hostBuildEnv *buildenv.Info, co
 
 	// We submit the job
 	var submitCmd syexec.SyCmd
-	submitCmd, execRes.Err = PrepareLaunchCmd(&mpiJob, jobmgr, hostBuildEnv, sysCfg)
+	submitCmd, execRes.Err = prepareLaunchCmd(&mpiJob, jobmgr, hostBuildEnv, sysCfg)
 	if execRes.Err != nil {
 		execRes.Err = fmt.Errorf("failed to prepare the launch command: %s", execRes.Err)
 		expRes.Pass = false
@@ -182,6 +179,10 @@ func Run(appInfo *app.Info, hostMPI *mpi.Config, hostBuildEnv *buildenv.Info, co
 	submitCmd.Cmd.Stdout = &stdout
 	submitCmd.Cmd.Stderr = &stderr
 	defer submitCmd.CancelFn()
+
+	// Regex to catch errors where mpirun returns 0 but is known to have failed because displaying the help message
+	var re = regexp.MustCompile(`^(\n?)Usage:`)
+
 	err := submitCmd.Cmd.Run()
 	// Get the command out/err
 	execRes.Stderr = stderr.String()

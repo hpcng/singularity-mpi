@@ -184,7 +184,7 @@ func generateJobScript(j *job.Job, env *buildenv.Info, sysCfg *sys.Config, kvs [
 
 	// Add the mpirun command
 	mpirunPath := filepath.Join(env.InstallDir, "bin", "mpirun")
-	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, &j.App, j.Container, sysCfg)
+	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, env, &j.App, j.Container, sysCfg)
 	if err != nil {
 		return fmt.Errorf("unable to get mpirun arguments: %s", err)
 	}

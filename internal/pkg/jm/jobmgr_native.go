@@ -77,7 +77,7 @@ func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.Sy
 		sycmd.CmdArgs = append(sycmd.CmdArgs, strconv.FormatInt(j.NP, 10))
 	}
 
-	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, &j.App, j.Container, sysCfg)
+	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, env, &j.App, j.Container, sysCfg)
 	if err != nil {
 		return sycmd, fmt.Errorf("unable to get mpirun arguments: %s", err)
 	}
