@@ -32,7 +32,7 @@ func main() {
 	/* Argument parsing */
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	debug := flag.Bool("d", false, "Enable debug mode")
-	appContainizer := flag.String("app-containizer", "", "Path to the configuration file for automatically containerization an application")
+	appContainizer := flag.String("conf", "", "Path to the configuration file for automatically containerization an application")
 	upload := flag.Bool("upload", false, "Upload generated images (appropriate configuration files need to specify the registry's URL")
 	persistent := flag.Bool("persistent-installs", false, "Keep the MPI installations on the host and the container images in the specified directory (instead of deleting everything once an experiment terminates). Default is '~/.sympi', set SYMPI_INSTALL_DIR to overwrite")
 
@@ -47,6 +47,7 @@ func main() {
 	}
 
 	// Make sure the tool's configuration file is set and load its data
+	log.Println("* Loading the tool's configuration...")
 	toolConfigFile, err := sy.CreateMPIConfigFile()
 	if err != nil {
 		log.Fatalf("cannot setup configuration file: %s", err)
@@ -62,20 +63,14 @@ func main() {
 	}
 
 	// Save the options passed in through the command flags
+	log.Println("* Setting the tool's logging mechanism...")
 	if sysCfg.Debug {
 		sysCfg.Verbose = true
-		// If the scratch dir exists, we delete it to start fresh
-		err := util.DirInit(sysCfg.ScratchDir)
-		if err != nil {
-			log.Fatalf("failed to initialize directory %s: %s", sysCfg.ScratchDir, err)
-		}
-
 		err = checker.CheckSystemConfig()
 		if err != nil {
 			log.Fatalf("the system is not correctly setup: %s", err)
 		}
 	}
-
 	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
 	logFile := util.OpenLogFile("sycontainerize")
 	defer logFile.Close()
@@ -86,6 +81,7 @@ func main() {
 		log.SetOutput(ioutil.Discard)
 	}
 
+	log.Println("* Creating container your application...")
 	_, err = containizer.ContainerizeApp(&sysCfg)
 	if err != nil {
 		log.Fatalf("failed to create container for app: %s", err)

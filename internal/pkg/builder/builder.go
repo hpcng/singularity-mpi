@@ -338,7 +338,7 @@ func (b *Builder) CompileAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildE
 		buildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir, "install")
 	}
 
-	log.Printf("Build MPI in %s\n", buildEnv.BuildDir)
+	log.Printf("Build MPI in %s from %s\n", buildEnv.BuildDir, mpi.URL)
 	log.Printf("Install MPI in %s\n", buildEnv.InstallDir)
 
 	if !util.PathExists(buildEnv.BuildDir) {

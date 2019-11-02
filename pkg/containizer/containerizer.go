@@ -54,9 +54,10 @@ func getMPIURL(mpi string, version string, sysCfg *sys.Config) string {
 		mpiCfgFile = "intel.conf"
 	}
 
-	path := filepath.Join(sysCfg.BinPath, "etc", mpiCfgFile)
+	path := filepath.Join(sysCfg.EtcDir, mpiCfgFile)
 	kvs, err := kv.LoadKeyValueConfig(path)
 	if err != nil {
+		log.Printf("[WARN] Cannot load configuration from %s: %s", path, err)
 		return ""
 	}
 	for _, kv := range kvs {
@@ -134,6 +135,7 @@ func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) 
 		}
 
 		var hostAppBuildEnv buildenv.Info
+		log.Println("Bind mode: compiling application on the host...")
 		err = b.CompileAppOnHost(&app.info, mpiCfg, &hostAppBuildEnv, sysCfg)
 		if err != nil {
 			return def, fmt.Errorf("failed to compile the application on the host: %s", err)
@@ -162,13 +164,26 @@ func getCommonContainerConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysC
 	containerMPI.Container.BuildDir = containerBuildEnv.BuildDir
 	containerMPI.Container.InstallDir = containerBuildEnv.BuildDir
 	containerMPI.Container.Name = kv.GetValue(kvs, "app_name") + ".sif"
-	containerMPI.Container.Path = filepath.Join(kv.GetValue(kvs, "output_dir"), containerMPI.Container.Name)
+	if sysCfg.Persistent == "" {
+		containerMPI.Container.Path = filepath.Join(kv.GetValue(kvs, "output_dir"), containerMPI.Container.Name)
+	} else {
+		containerInstallDir := filepath.Join(sysCfg.Persistent, "mpi_container_"+kv.GetValue(kvs, "app_name"))
+		containerMPI.Container.Path = filepath.Join(containerInstallDir, containerMPI.Container.Name)
+		if !util.PathExists(containerInstallDir) {
+			err := util.DirInit(containerInstallDir)
+			if err != nil {
+				log.Printf("[WARN] failed to create %s", containerInstallDir)
+			}
+		}
+	}
 	containerMPI.Container.DefFile = filepath.Join(kv.GetValue(kvs, "output_dir"), kv.GetValue(kvs, "app_name")+".def")
 	containerMPI.Container.Distro = kv.GetValue(kvs, "distro")
 	containerBuildEnv.InstallDir = filepath.Join(kv.GetValue(kvs, "output_dir"), "install")
 	containerMPI.Implem.ID = kv.GetValue(kvs, "mpi")
 	containerMPI.Implem.Version = kv.GetValue(kvs, "container_mpi")
+	fmt.Printf("Getting URL from: %s %s\n", kv.GetValue(kvs, "mpi"), containerMPI.Implem.Version)
 	containerMPI.Implem.URL = getMPIURL(kv.GetValue(kvs, "mpi"), containerMPI.Implem.Version, sysCfg)
+	fmt.Printf("URL: %s\n", containerMPI.Implem.URL)
 
 	return containerBuildEnv
 }
@@ -193,6 +208,7 @@ func installMPIonHost(kvs []kv.KV, hostBuildEnv *buildenv.Info, app *appConfig, 
 	mpiDir := hostMPI.Implem.ID + "-" + hostMPI.Implem.Version
 	hostBuildEnv.InstallDir = filepath.Join(kv.GetValue(kvs, "output_dir"), "install", mpiDir)
 	hostMPI.Implem.URL = getMPIURL(kv.GetValue(kvs, "mpi"), hostMPI.Implem.Version, sysCfg)
+	fmt.Printf("CHECKME HOSt MPI URL: %s\n", hostMPI.Implem.URL)
 
 	// todo: this should be part of hostMPI, not app
 	app.envScript = filepath.Join(kv.GetValue(kvs, "output_dir"), hostMPI.Implem.ID+"-"+hostMPI.Implem.Version+".env")
@@ -245,6 +261,7 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 
 	skipHostMPI := false
 
+	log.Printf("* Loading configuration from %s\n", sysCfg.AppContainizer)
 	// Load config file
 	kvs, err := kv.LoadKeyValueConfig(sysCfg.AppContainizer)
 	if err != nil {
@@ -316,6 +333,7 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 
 	// Install MPI on host
 	if !skipHostMPI {
+		log.Println("* Installing MPI on host...")
 		err := installMPIonHost(kvs, &hostBuildEnv, &app, sysCfg)
 		if err != nil {
 			return containerMPI.Container, fmt.Errorf("failed to install MPI on host: %s", err)
@@ -327,13 +345,22 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	log.Printf("-> Definition file: %s\n", containerMPI.Container.DefFile)
 	log.Printf("-> MPI implementation: %s\n", containerMPI.Implem.ID)
 	log.Printf("-> MPI implementation version: %s\n", containerMPI.Implem.Version)
+	log.Printf("-> MPI URL: %s\n", containerMPI.Container.URL)
 	log.Printf("-> Build directory: %s\n", containerMPI.Container.BuildDir)
 	log.Printf("-> Install directory: %s\n", containerMPI.Container.InstallDir)
 	log.Printf("-> Container name: %s\n", containerMPI.Container.Name)
 	log.Printf("-> Container Linux distribution: %s\n", containerMPI.Container.Distro)
 	log.Printf("-> Container MPI model: %s\n", containerMPI.Container.Model)
 	log.Printf("-> Scratch directory: %s\n", sysCfg.ScratchDir)
+	log.Printf("-> Target container image: %s\n", containerMPI.Container.Path)
 
+	// Make sure the image already exists, if so, stop, we do not overwrite images, ever
+	if util.FileExists(containerMPI.Container.Path) {
+		fmt.Printf("%s already exists, stopping\n", containerMPI.Container.Path)
+		return containerMPI.Container, nil
+	}
+
+	// If the scratch dir exists, we delete it to start fresh
 	err = util.DirInit(sysCfg.ScratchDir)
 	if err != nil {
 		return containerMPI.Container, fmt.Errorf("failed to initialize %s: %s", sysCfg.ScratchDir, err)
@@ -345,12 +372,14 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	}
 
 	// Generate definition file
+	log.Println("* Generating definition file...")
 	_, err = generateMPIDeffile(&app, &containerMPI, sysCfg)
 	if err != nil {
 		return containerMPI.Container, fmt.Errorf("failed to generate definition file %s: %s", containerMPI.Container.DefFile, err)
 	}
 
 	// Create container
+	log.Println("* Creating container image...")
 	err = container.Create(&containerMPI.Container, sysCfg)
 	if err != nil {
 		return containerMPI.Container, fmt.Errorf("failed to create container: %s", err)

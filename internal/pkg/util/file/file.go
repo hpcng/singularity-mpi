@@ -164,7 +164,7 @@ func DirInit(path string) error {
 	}
 	err := os.MkdirAll(path, 0755)
 	if err != nil {
-		log.Fatalf("failed to create scratch directory: %s", err)
+		log.Fatalf("failed to initialize directory %s: %s", path, err)
 	}
 
 	return nil
