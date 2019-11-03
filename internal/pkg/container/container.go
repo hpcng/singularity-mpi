@@ -92,11 +92,6 @@ func Create(container *Config, sysCfg *sys.Config) error {
 		}
 	}
 
-	sudoBin, err := exec.LookPath("sudo")
-	if err != nil {
-		return fmt.Errorf("sudo not available: %s", err)
-	}
-
 	if container.Name == "" {
 		container.Name = "singularity_mpi.sif"
 	}
@@ -120,9 +115,15 @@ func Create(container *Config, sysCfg *sys.Config) error {
 	}
 
 	log.Printf("-> Using definition file %s", container.DefFile)
-	log.Printf("-> Running %s %s %s %s %s\n", sudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, sudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
+	var cmd *exec.Cmd
+	if sy.IsSudoCmd("build", sysCfg) {
+		log.Printf("-> Running %s %s %s %s %s\n", sysCfg.SudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
+		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
+	} else {
+		log.Printf("-> Running %s %s %s %s\n", sysCfg.SingularityBin, "build", container.Path, container.DefFile)
+		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
+	}
 	cmd.Dir = container.BuildDir
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -210,7 +211,12 @@ func Sign(container *Config, sysCfg *sys.Config) error {
 		indexIdx = os.Getenv(KeyIndex)
 	}
 
-	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "sign", "--keyidx", indexIdx, container.Path)
+	var cmd *exec.Cmd
+	if sy.IsSudoCmd("sign", sysCfg) {
+		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "sign", "--keyidx", indexIdx, container.Path)
+	} else {
+		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "sign", "--keyidx", indexIdx, container.Path)
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -244,7 +250,12 @@ func Upload(containerInfo *Config, sysCfg *sys.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "push", containerInfo.Path, sysCfg.Registry)
+	var cmd *exec.Cmd
+	if sy.IsSudoCmd("push", sysCfg) {
+		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "push", containerInfo.Path, sysCfg.Registry)
+	} else {
+		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "push", containerInfo.Path, sysCfg.Registry)
+	}
 	cmd.Dir = containerInfo.BuildDir
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -311,7 +322,12 @@ func GetMetadata(imgPath string, sysCfg *sys.Config) (Config, implem.Info, error
 	defer cancel()
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "inspect", imgPath)
+	var cmd *exec.Cmd
+	if sy.IsSudoCmd("inspect", sysCfg) {
+		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "inspect", imgPath)
+	} else {
+		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "inspect", imgPath)
+	}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
