@@ -24,11 +24,20 @@ import (
 type MPIToolConfig struct {
 	// BuildPrivilege specifies whether or not we can build images on the platform
 	BuildPrivilege bool
+
+	// NoPriv specifies whether or not we need to use the '-u' flag with singularity commands
+	NoPriv bool
 }
 
 const (
 	// BuildPrivilegeKey is the key used in the tool's configuration file to specify if the tool can create images on the platform
 	BuildPrivilegeKey = "build_privilege"
+
+	// NoPrivKey is the key used to specify whether Singularity should be executed without any privilege
+	NoPrivKey = "force_unprivileged"
+
+	// SudoCmdsKey is the key used to specify which Singularity commands need to be executed with sudo
+	SudoCmdsKey = "singularity_sudo_cmds"
 )
 
 // GetPathToSyMPIConfigFile returns the path to the tool's configuration file
@@ -54,7 +63,9 @@ func initMPIConfigFile() ([]string, error) {
 		buildPrivilegeEntry = BuildPrivilegeKey + " = false"
 	}
 
-	data := []string{buildPrivilegeEntry}
+	sudoCmdsEntry := SudoCmdsKey + " = build" // By default we assume build will require sudo
+
+	data := []string{buildPrivilegeEntry, sudoCmdsEntry}
 
 	return data, nil
 }
@@ -144,4 +155,15 @@ func GetImageURL(mpiCfg *implem.Info, sysCfg *sys.Config) string {
 		return ""
 	}
 	return kv.GetValue(kvs, mpiCfg.Version)
+}
+
+// IsSudoCnd checks whether a command needs to be executed with sudo based on data from
+// the tool's configuration file
+func IsSudoCmd(cmd string, sysCfg *sys.Config) bool {
+	for _, c := range sysCfg.SudoSyCmds {
+		if c == cmd {
+			return true
+		}
+	}
+	return false
 }

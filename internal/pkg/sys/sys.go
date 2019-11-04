@@ -106,6 +106,15 @@ type Config struct {
 
 	// SyConfigFile
 	SyConfigFile string
+
+	// Nopriv specifies whether we need to use the '-u' option when running singularity
+	Nopriv bool
+
+	// SudoSyCmds is the list of Singularity commands that need to be executed with sudo
+	SudoSyCmds []string
+
+	// SudoBin is the path to sudo on the host
+	SudoBin string
 }
 
 // GetSympiDir returns the directory where MPI is installed and container images

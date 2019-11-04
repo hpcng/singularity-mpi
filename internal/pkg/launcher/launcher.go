@@ -106,6 +106,10 @@ func Load() (sys.Config, jm.JM, network.Info, error) {
 	if err != nil {
 		return cfg, jobmgr, net, fmt.Errorf("failed to find the Singularity binary")
 	}
+	cfg.SudoBin, err = exec.LookPath("sudo")
+	if err != nil {
+		return cfg, jobmgr, net, fmt.Errorf("sudo not available: %s", err)
+	}
 
 	// Load the job manager component first
 	jobmgr = jm.Detect()

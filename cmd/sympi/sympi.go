@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
+
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 
@@ -249,6 +251,21 @@ func getDefaultSysConfig() sys.Config {
 	if err != nil {
 		log.Fatalf("unable to load configuration: %s", err)
 
+	}
+
+	sympiKVs, err := sy.LoadMPIConfigFile()
+	if err != nil {
+		log.Printf("failed to run configuration from singularity-mpi configuration file: %s", err)
+	}
+	val := kv.GetValue(sympiKVs, sy.NoPrivKey)
+	if val == "" {
+		sysCfg.Nopriv = false
+	} else {
+		sysCfg.Nopriv = true
+	}
+	val = kv.GetValue(sympiKVs, sy.SudoCmdsKey)
+	if val != "" {
+		sysCfg.SudoSyCmds = strings.Split(val, " ")
 	}
 
 	return sysCfg

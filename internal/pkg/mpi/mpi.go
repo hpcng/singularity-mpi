@@ -60,6 +60,10 @@ func getBindArguments(hostMPI *implem.Info, hostBuildenv *buildenv.Info, c *cont
 func GetMpirunArgs(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, app *app.Info, syContainer *container.Config, sysCfg *sys.Config) ([]string, error) {
 	args := []string{"singularity", "exec"}
 
+	if sysCfg.Nopriv {
+		args = append(args, "-u")
+	}
+
 	bindArgs := getBindArguments(myHostMPICfg, hostBuildEnv, syContainer)
 	if len(bindArgs) > 0 {
 		args = append(args, "--bind")
