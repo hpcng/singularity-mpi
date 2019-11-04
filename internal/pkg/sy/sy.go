@@ -16,6 +16,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
+// Configure is the function to call to configure Singularity
 func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error {
 	// Run mconfig
 	log.Printf("-> Executing from %s: ./mconfig --prefix=%s\n", env.BuildDir, env.InstallDir)
