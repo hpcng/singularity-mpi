@@ -101,7 +101,7 @@ func displayInstalled(dir string) error {
 	if len(singularities) > 0 {
 		fmt.Printf("Available Singularity installation(s) on the host:\n")
 		for _, sy := range singularities {
-			fmt.Println("\tsingularity:" + sy + "\n")
+			fmt.Printf("\tsingularity: %s\n", sy)
 		}
 		fmt.Printf("\n")
 	} else {
