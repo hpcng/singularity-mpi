@@ -101,7 +101,7 @@ func displayInstalled(dir string) error {
 	if len(singularities) > 0 {
 		fmt.Printf("Available Singularity installation(s) on the host:\n")
 		for _, sy := range singularities {
-			fmt.Printf("\tsingularity: %s\n", sy)
+			fmt.Printf("\tsingularity:%s\n", sy)
 		}
 		fmt.Printf("\n")
 	} else {
@@ -177,6 +177,15 @@ func updateEnvFile(file string, pathEnv string, ldlibEnv string) error {
 	return nil
 }
 
+func getSyDetails(desc string) string {
+	tokens := strings.Split(desc, ":")
+	if len(tokens) != 2 {
+		fmt.Println("invalid Singularity description string, execute 'sympi -list' to get the list of available installations")
+		return ""
+	}
+	return tokens[1]
+}
+
 func getMPIDetails(desc string) (string, string) {
 	tokens := strings.Split(desc, ":")
 	if len(tokens) != 2 {
@@ -186,30 +195,36 @@ func getMPIDetails(desc string) (string, string) {
 	return tokens[0], tokens[1]
 }
 
-func getCleanedUpEnvVars() ([]string, []string) {
+func cleanupEnvVar(prefix string) ([]string, []string) {
 	var newPath []string
 	var newLDLIB []string
-
-	sympiDir := sys.GetSympiDir()
 
 	curPath := os.Getenv("PATH")
 	curLDLIB := os.Getenv("LD_LIBRARY_PATH")
 
 	pathTokens := strings.Split(curPath, ":")
 	for _, t := range pathTokens {
-		if !strings.Contains(t, sympiDir) {
+		if !strings.Contains(t, prefix) {
 			newPath = append(newPath, t)
 		}
 	}
 
 	ldlibTokens := strings.Split(curLDLIB, ":")
 	for _, t := range ldlibTokens {
-		if !strings.Contains(t, sympiDir) {
+		if !strings.Contains(t, prefix) {
 			newLDLIB = append(newLDLIB, t)
 		}
 	}
 
 	return newPath, newLDLIB
+}
+
+func getCleanedUpSyEnvVars() ([]string, []string) {
+	return cleanupEnvVar(sys.SingularityInstallDirPrefix)
+}
+
+func getCleanedUpMPIEnvVars() ([]string, []string) {
+	return cleanupEnvVar(sys.MPIInstallDirPrefix)
 }
 
 func loadMPI(id string) error {
@@ -218,7 +233,7 @@ func loadMPI(id string) error {
 	// we exit the command and let bash do some magic to update it. Fortunately, we
 	// know that we can have one and only one MPI in the environment of a single time
 	// so when we load a MPI, we make sure that we remove a previous load changes.
-	cleanedPath, cleanedLDLIB := getCleanedUpEnvVars()
+	cleanedPath, cleanedLDLIB := getCleanedUpMPIEnvVars()
 
 	implem, ver := getMPIDetails(id)
 	if implem == "" || ver == "" {
@@ -249,9 +264,45 @@ func loadMPI(id string) error {
 	return nil
 }
 
-func unloadMPI() error {
-	newPath, newLDLIB := getCleanedUpEnvVars()
+func loadSingularity(id string) error {
+	// We can change the env multiple times during the execution of a single command
+	// and these modifications will NOT be reflected in the actual environment until
+	// we exit the command and let bash do some magic to update it. Fortunately, we
+	// know that we can have one and only one Singularity in the environment of a
+	// single time so when we load a specific version of Singularity, we make sure
+	// that we remove a previous load changes.
+	cleanedPath, cleanedLDLIB := getCleanedUpSyEnvVars()
 
+	ver := getSyDetails(id)
+	if ver == "" {
+		fmt.Println("invalid installation of MPI, execute 'sympi -list' to get the list of available installations")
+		return nil
+	}
+
+	sympiDir := sys.GetSympiDir()
+	syBaseDir := filepath.Join(sympiDir, sys.SingularityInstallDirPrefix+ver)
+	syBinDir := filepath.Join(syBaseDir, "bin")
+	syLibDir := filepath.Join(syBaseDir, "lib")
+
+	path := strings.Join(cleanedPath, ":")
+	ldlib := strings.Join(cleanedLDLIB, ":")
+	path = syBinDir + ":" + path
+	ldlib = syLibDir + ":" + ldlib
+
+	file, err := getEnvFile()
+	if err != nil || !util.FileExists(file) {
+		return fmt.Errorf("file %s does not exist", file)
+	}
+
+	err = updateEnvFile(file, path, ldlib)
+	if err != nil {
+		return fmt.Errorf("failed to update %s: %s", file, err)
+	}
+
+	return nil
+}
+
+func updateEnv(newPath []string, newLDLIB []string) error {
 	// Sanity checks
 	if len(newPath) == 0 {
 		return fmt.Errorf("new PATH is empty")
@@ -267,6 +318,18 @@ func unloadMPI() error {
 	}
 
 	return nil
+}
+
+func unloadSingularity() error {
+	newPath, newLDLIB := getCleanedUpSyEnvVars()
+
+	return updateEnv(newPath, newLDLIB)
+}
+
+func unloadMPI() error {
+	newPath, newLDLIB := getCleanedUpMPIEnvVars()
+
+	return updateEnv(newPath, newLDLIB)
 }
 
 func getDefaultSysConfig() sys.Config {
@@ -518,8 +581,8 @@ func main() {
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	debug := flag.Bool("d", false, "Enable debug mode")
 	list := flag.Bool("list", false, "List all MPI on the host and all MPI containers")
-	load := flag.String("load", "", "The version of MPI installed on the host to load")
-	unload := flag.Bool("unload", false, "Unload the current version of the MPI that is used")
+	load := flag.String("load", "", "The version of MPI/Singularity installed on the host to load")
+	unload := flag.String("unload", "", "Unload current version of MPI/Singularity that is used, e.g., sympi -unload [mpi|singularity]")
 	install := flag.String("install", "", "MPI implementation to install, e.g., openmpi:4.0.2")
 	uninstall := flag.String("uninstall", "", "MPI implementation to uninstall, e.g., openmpi:4.0.2")
 	run := flag.String("run", "", "Run a container")
@@ -555,16 +618,34 @@ func main() {
 	}
 
 	if *load != "" {
-		err := loadMPI(*load)
-		if err != nil {
-			log.Fatalf("impossible to load MPI: %s", err)
+		re := regexp.MustCompile(`^singularity:`)
+		if re.Match([]byte(*load)) {
+			err := loadSingularity(*load)
+			if err != nil {
+				log.Fatalf("impossible to load Singularity: %s", err)
+			}
+		} else {
+			err := loadMPI(*load)
+			if err != nil {
+				log.Fatalf("impossible to load MPI: %s", err)
+			}
 		}
 	}
 
-	if *unload {
-		err := unloadMPI()
-		if err != nil {
-			log.Fatalf("impossible to unload MPI: %s", err)
+	if *unload != "" {
+		switch *unload {
+		case "mpi":
+			err := unloadMPI()
+			if err != nil {
+				log.Fatalf("impossible to unload MPI: %s", err)
+			}
+		case "singularity":
+			err := unloadSingularity()
+			if err != nil {
+				log.Fatalf("impossible to unload Singularity: %s", err)
+			}
+		default:
+			log.Fatalf("unload only access the following arguments: mpi, singularity")
 		}
 	}
 
