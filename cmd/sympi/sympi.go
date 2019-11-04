@@ -18,36 +18,31 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
-	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
+	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
+	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
-
-	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
-	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
+	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 )
 
 func getHostMPIInstalls(entries []os.FileInfo) ([]string, error) {
 	var hostInstalls []string
 
 	for _, entry := range entries {
-		matched, err := regexp.MatchString(`mpi_install_.*`, entry.Name())
+		matched, err := regexp.MatchString(sys.MPIInstallDirPrefix+`.*`, entry.Name())
 		if err != nil {
 			return hostInstalls, fmt.Errorf("failed to parse %s: %s", entry, err)
 		}
 		if matched {
-			s := strings.Replace(entry.Name(), "mpi_install_", "", -1)
+			s := strings.Replace(entry.Name(), sys.MPIInstallDirPrefix, "", -1)
 			hostInstalls = append(hostInstalls, strings.Replace(s, "-", ":", -1))
 		}
 	}
@@ -58,15 +53,29 @@ func getHostMPIInstalls(entries []os.FileInfo) ([]string, error) {
 func getContainerInstalls(entries []os.FileInfo) ([]string, error) {
 	var containers []string
 	for _, entry := range entries {
-		matched, err := regexp.MatchString(`mpi_container_.*`, entry.Name())
+		matched, err := regexp.MatchString(sys.ContainerInstallDirPrefix+`.*`, entry.Name())
 		if err != nil {
 			return containers, fmt.Errorf("failed to parse %s: %s", entry, err)
 		}
 		if matched {
-			containers = append(containers, strings.Replace(entry.Name(), "mpi_container_", "", -1))
+			containers = append(containers, strings.Replace(entry.Name(), sys.ContainerInstallDirPrefix, "", -1))
 		}
 	}
 	return containers, nil
+}
+
+func getSingularityInstalls(entries []os.FileInfo) ([]string, error) {
+	var singularities []string
+	for _, entry := range entries {
+		matched, err := regexp.MatchString(sys.SingularityInstallDirPrefix+`.*`, entry.Name())
+		if err != nil {
+			return singularities, fmt.Errorf("failed to parse %s: %s", entry, err)
+		}
+		if matched {
+			singularities = append(singularities, strings.Replace(entry.Name(), sys.SingularityInstallDirPrefix, "", -1))
+		}
+	}
+	return singularities, nil
 }
 
 func displayInstalled(dir string) error {
@@ -84,20 +93,34 @@ func displayInstalled(dir string) error {
 	if err != nil {
 		return fmt.Errorf("unable to get the list of containers stored on the host: %s", err)
 	}
+	singularities, err := getSingularityInstalls(entries)
+	if err != nil {
+		return fmt.Errorf("unable to get the list of singularity installs on the host: %s", err)
+	}
+
+	if len(singularities) > 0 {
+		fmt.Printf("Available Singularity installation(s) on the host:\n")
+		for _, sy := range singularities {
+			fmt.Println("\tsingularity:" + sy + "\n")
+		}
+		fmt.Printf("\n")
+	} else {
+		fmt.Printf("No Singularity available on the host\n\n")
+	}
 
 	if len(hostInstalls) > 0 {
 		fmt.Printf("Available MPI installation(s) on the host:\n\t")
 		fmt.Println(strings.Join(hostInstalls, "\n\t"))
 		fmt.Printf("\n")
 	} else {
-		fmt.Println("No MPI available on the host")
+		fmt.Printf("No MPI available on the host\n\n")
 	}
 
 	if len(containers) > 0 {
 		fmt.Printf("Available container(s):\n\t")
 		fmt.Println(strings.Join(containers, "\n\t"))
 	} else {
-		fmt.Println("No container available")
+		fmt.Printf("No container available\n\n")
 	}
 
 	return nil
@@ -204,7 +227,7 @@ func loadMPI(id string) error {
 	}
 
 	sympiDir := sys.GetSympiDir()
-	mpiBaseDir := filepath.Join(sympiDir, "mpi_install_"+implem+"-"+ver)
+	mpiBaseDir := filepath.Join(sympiDir, sys.MPIInstallDirPrefix+implem+"-"+ver)
 	mpiBinDir := filepath.Join(mpiBaseDir, "bin")
 	mpiLibDir := filepath.Join(mpiBaseDir, "lib")
 
@@ -325,8 +348,7 @@ func installMPIonHost(mpiDesc string, sysCfg *sys.Config) error {
 		return fmt.Errorf("failed to set host build environment: %s", err)
 	}
 
-	jobmgr := jm.Detect()
-	execRes := b.InstallHost(&mpiCfg, &jobmgr, &buildEnv, sysCfg)
+	execRes := b.InstallOnHost(&mpiCfg, &buildEnv, sysCfg)
 	if execRes.Err != nil {
 		return fmt.Errorf("failed to install MPI on the host: %s", execRes.Err)
 	}
@@ -386,7 +408,7 @@ func runContainer(containerDesc string, sysCfg *sys.Config) error {
 	sysCfg.Persistent = sys.GetSympiDir()
 
 	// Get the full path to the image
-	containerInstallDir := filepath.Join(sys.GetSympiDir(), "mpi_container_"+containerDesc)
+	containerInstallDir := filepath.Join(sys.GetSympiDir(), sys.ContainerInstallDirPrefix+containerDesc)
 	imgPath := filepath.Join(containerInstallDir, containerDesc+".sif")
 	if !util.FileExists(imgPath) {
 		return fmt.Errorf("%s does not exist", imgPath)
@@ -448,6 +470,50 @@ func runContainer(containerDesc string, sysCfg *sys.Config) error {
 	return nil
 }
 
+func installSingularity(id string, sysCfg *sys.Config) error {
+	kvs, err := sy.LoadSingularityReleaseConf(sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to load data about Singularity releases: %s", err)
+	}
+
+	var sy implem.Info
+	sy.ID = implem.SY
+	tokens := strings.Split(id, ":")
+	if len(tokens) != 2 {
+		return fmt.Errorf("%s had an invalid format, it should of the form 'singularity:<version>'", id)
+	}
+
+	sy.Version = tokens[1]
+	sy.URL = kv.GetValue(kvs, sy.Version)
+
+	b, err := builder.Load(&sy)
+	if err != nil {
+		return fmt.Errorf("failed to load a builder: %s", err)
+	}
+
+	var buildEnv buildenv.Info
+	buildEnv.InstallDir = filepath.Join(sys.GetSympiDir(), sys.SingularityInstallDirPrefix+sy.Version)
+	buildEnv.ScratchDir = filepath.Join(sys.GetSympiDir(), sys.SingularityScratchDirPrefix+sy.Version)
+	buildEnv.BuildDir = filepath.Join(sys.GetSympiDir(), sys.SingularityBuildDirPrefix+sy.Version)
+	err = util.DirInit(buildEnv.ScratchDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize %s: %s", buildEnv.ScratchDir, err)
+	}
+	defer os.RemoveAll(buildEnv.ScratchDir)
+	err = util.DirInit(buildEnv.BuildDir)
+	if err != nil {
+		return fmt.Errorf("failed to initializat %s: %s", buildEnv.BuildDir, err)
+	}
+	defer os.RemoveAll(buildEnv.BuildDir)
+
+	execRes := b.InstallOnHost(&sy, &buildEnv, sysCfg)
+	if execRes.Err != nil {
+		return fmt.Errorf("failed to install %s: %s", id, execRes.Err)
+	}
+
+	return nil
+}
+
 func main() {
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	debug := flag.Bool("d", false, "Enable debug mode")
@@ -503,9 +569,18 @@ func main() {
 	}
 
 	if *install != "" {
-		err := installMPIonHost(*install, &sysCfg)
-		if err != nil {
-			log.Fatalf("impossible to install %s: %s", *install, err)
+		re := regexp.MustCompile("^singularity")
+
+		if re.Match([]byte(*install)) {
+			err := installSingularity(*install, &sysCfg)
+			if err != nil {
+				log.Fatalf("failed to install Singularity %s: %s", *install, err)
+			}
+		} else {
+			err := installMPIonHost(*install, &sysCfg)
+			if err != nil {
+				log.Fatalf("failed to install MPI %s: %s", *install, err)
+			}
 		}
 	}
 

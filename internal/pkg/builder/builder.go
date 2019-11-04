@@ -16,21 +16,18 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
-
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/autotools"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
+	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpich"
 	"github.com/sylabs/singularity-mpi/internal/pkg/openmpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
@@ -74,66 +71,83 @@ func GenericConfigure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string
 	return nil
 }
 
-func (b *Builder) compileMPI(mpiCfg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
+func findMakefile(env *buildenv.Info) ([]string, error) {
+	var makeExtraArgs []string
+	makefilePath := filepath.Join(env.SrcDir, "Makefile")
+	if !util.FileExists(makefilePath) {
+		makefilePath := filepath.Join(env.SrcDir, "builddir", "Makefile")
+		if util.FileExists(makefilePath) {
+			makeExtraArgs = []string{"-C", "builddir"}
+			return makeExtraArgs, nil
+		}
+	} else {
+		return makeExtraArgs, nil
+	}
+
+	return nil, fmt.Errorf("unable to locate the Makefile")
+}
+
+func (b *Builder) compile(pkg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
 	var res syexec.Result
 
-	log.Println("- Compiling MPI...")
+	log.Printf("- Compiling %s...\n", pkg.ID)
 	if env.SrcDir == "" {
 		res.Err = fmt.Errorf("invalid parameter(s)")
 		return res
 	}
 
-	makefilePath := filepath.Join(env.SrcDir, "Makefile")
-	if util.FileExists(makefilePath) {
-		res.Err = env.RunMake("")
+	makeExtraArgs, err := findMakefile(env)
+	if err != nil {
+		fmt.Println("-> No Makefile, trying to figure out how to compile/install MPI...")
+		if pkg.ID == implem.IMPI {
+			res.Err = impi.SetupInstallScript(env, sysCfg)
+			if res.Err != nil {
+				return res
+			}
+			return impi.RunScript(env, sysCfg, "install")
+		}
+		res.Err = fmt.Errorf("failed to figure out how to compile %s", pkg.ID)
 		return res
 	}
 
-	fmt.Println("-> No Makefile, trying to figure out how to compile/install MPI...")
-	if mpiCfg.ID == implem.IMPI {
-		res.Err = impi.SetupInstallScript(env, sysCfg)
-		if res.Err != nil {
-			return res
-		}
-		return impi.RunScript(env, sysCfg, "install")
-	}
-
+	res.Err = env.RunMake(makeExtraArgs, "")
 	return res
 }
 
-func (b *Builder) install(mpiCfg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
+func (b *Builder) install(pkg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
 	var res syexec.Result
 
-	if mpiCfg.ID == implem.IMPI {
+	if pkg.ID == implem.IMPI {
 		fmt.Println("-> Intel MPI detected, no install step, compile step installed the software...")
+		return res
 	}
 
-	log.Printf("- Installing MPI in %s...", env.InstallDir)
+	log.Printf("- Installing %s in %s...", pkg.ID, env.InstallDir)
 	if env.InstallDir == "" || env.BuildDir == "" {
 		res.Err = fmt.Errorf("invalid parameter(s)")
 		return res
 	}
 
-	makefilePath := filepath.Join(env.SrcDir, "Makefile")
-	if util.FileExists(makefilePath) {
-		res.Err = env.RunMake("install")
+	makeExtraArgs, err := findMakefile(env)
+	if err != nil {
+		res.Err = fmt.Errorf("unable to find Makefile: %s", err)
 		return res
 	}
-
+	res.Err = env.RunMake(makeExtraArgs, "install")
 	return res
 }
 
-// InstallHost installs a specific version of MPI on the host
-func (b *Builder) InstallHost(mpiCfg *implem.Info, jobmgr *jm.JM, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
+// InstallHostMPI installs a specific version of MPI on the host
+func (b *Builder) InstallOnHost(pkg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
 	var res syexec.Result
 
 	// Sanity checks
-	if env.InstallDir == "" || mpiCfg.URL == "" {
+	if env.InstallDir == "" || pkg.URL == "" {
 		res.Err = fmt.Errorf("invalid parameter(s)")
 		return res
 	}
 
-	log.Println("Installing MPI on host...")
+	log.Printf("Installing %s on host...", pkg.ID)
 	if sysCfg.Persistent != "" && util.PathExists(env.InstallDir) {
 		log.Printf("* %s already exists, skipping installation...\n", env.InstallDir)
 		return res
@@ -141,11 +155,11 @@ func (b *Builder) InstallHost(mpiCfg *implem.Info, jobmgr *jm.JM, env *buildenv.
 
 	log.Printf("* %s does not exists, installing from scratch\n", env.InstallDir)
 	var s buildenv.SoftwarePackage
-	s.URL = mpiCfg.URL
-	s.Name = mpiCfg.ID + "-" + mpiCfg.Version
+	s.URL = pkg.URL
+	s.Name = pkg.ID + "-" + pkg.Version
 	res.Err = env.Get(&s)
 	if res.Err != nil {
-		res.Err = fmt.Errorf("failed to download MPI from %s: %s", mpiCfg.URL, res.Err)
+		res.Err = fmt.Errorf("failed to download MPI from %s: %s", pkg.URL, res.Err)
 		return res
 	}
 
@@ -156,20 +170,23 @@ func (b *Builder) InstallHost(mpiCfg *implem.Info, jobmgr *jm.JM, env *buildenv.
 	}
 
 	// Right now, we assume we do not have to install autotools, which is a bad assumption
-	extraArgs := b.GetConfigureExtraArgs(sysCfg)
+	var extraArgs []string
+	if b.GetConfigureExtraArgs != nil {
+		extraArgs = b.GetConfigureExtraArgs(sysCfg)
+	}
 	res.Err = b.Configure(env, sysCfg, extraArgs)
 	if res.Err != nil {
-		res.Err = fmt.Errorf("failed to configure MPI: %s", res.Err)
+		res.Err = fmt.Errorf("failed to configure %s: %s", pkg.ID, res.Err)
 		return res
 	}
 
-	res = b.compileMPI(mpiCfg, env, sysCfg)
+	res = b.compile(pkg, env, sysCfg)
 	if res.Err != nil {
-		res.Stderr = fmt.Sprintf("failed to compile MPI: %s", res.Err)
+		res.Stderr = fmt.Sprintf("failed to compile %s: %s", pkg.ID, res.Err)
 		return res
 	}
 
-	res = b.install(mpiCfg, env, sysCfg)
+	res = b.install(pkg, env, sysCfg)
 	if res.Err != nil {
 		res.Stderr = fmt.Sprintf("failed to install MPI: %s", res.Err)
 		return res
@@ -205,11 +222,11 @@ func (b *Builder) UninstallHost(mpiCfg *implem.Info, env *buildenv.Info, sysCfg 
 }
 
 // Load is the function that will figure out the function to call for various stages of the code configuration/compilation/installation/execution
-func Load(mpiCfg *implem.Info) (Builder, error) {
+func Load(pkg *implem.Info) (Builder, error) {
 	var builder Builder
 	builder.Configure = GenericConfigure
 
-	switch mpiCfg.ID {
+	switch pkg.ID {
 	case implem.OMPI:
 		builder.Configure = openmpi.Configure
 		builder.GetConfigureExtraArgs = openmpi.GetExtraConfigureArgs
@@ -219,6 +236,8 @@ func Load(mpiCfg *implem.Info) (Builder, error) {
 		builder.GetDeffileTemplateTags = mpich.GetDeffileTemplateTags
 	case implem.IMPI:
 		builder.GetDeffileTemplateTags = impi.GetDeffileTemplateTags
+	case implem.SY:
+		builder.Configure = sy.Configure
 	}
 
 	return builder, nil
@@ -348,8 +367,7 @@ func (b *Builder) CompileAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildE
 		}
 	}
 
-	jobmgr := jm.Detect()
-	res := b.InstallHost(&mpiCfg.Implem, &jobmgr, buildEnv, sysCfg)
+	res := b.InstallOnHost(&mpiCfg.Implem, buildEnv, sysCfg)
 	if res.Err != nil {
 		return fmt.Errorf("failed to install MPI on host: %s", res.Err)
 	}

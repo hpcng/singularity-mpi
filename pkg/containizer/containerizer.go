@@ -19,7 +19,6 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -167,7 +166,7 @@ func getCommonContainerConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysC
 	if sysCfg.Persistent == "" {
 		containerMPI.Container.Path = filepath.Join(kv.GetValue(kvs, "output_dir"), containerMPI.Container.Name)
 	} else {
-		containerInstallDir := filepath.Join(sysCfg.Persistent, "mpi_container_"+kv.GetValue(kvs, "app_name"))
+		containerInstallDir := filepath.Join(sysCfg.Persistent, sys.ContainerInstallDirPrefix+kv.GetValue(kvs, "app_name"))
 		containerMPI.Container.Path = filepath.Join(containerInstallDir, containerMPI.Container.Name)
 		if !util.PathExists(containerInstallDir) {
 			err := util.DirInit(containerInstallDir)
@@ -226,15 +225,12 @@ func installMPIonHost(kvs []kv.KV, hostBuildEnv *buildenv.Info, app *appConfig, 
 		return fmt.Errorf("failed to initialize %s: %s", hostBuildEnv.InstallDir, err)
 	}
 
-	// Lookup the job manager configuration so we can know how to install MPI on the host
-	jobmgr := jm.Detect()
-
 	// Instantiate and call a builder
 	b, err := builder.Load(&hostMPI.Implem)
 	if err != nil {
 		return fmt.Errorf("unable to create a builder: %s", err)
 	}
-	res := b.InstallHost(&hostMPI.Implem, &jobmgr, hostBuildEnv, sysCfg)
+	res := b.InstallOnHost(&hostMPI.Implem, hostBuildEnv, sysCfg)
 	if res.Err != nil {
 		return fmt.Errorf("failed to install MPI on the host: %s", res.Err)
 	}

@@ -125,7 +125,7 @@ func (env *Info) Unpack() error {
 }
 
 // RunMake executes the appropriate command to build the software
-func (env *Info) RunMake(stage string) error {
+func (env *Info) RunMake(args []string, stage string) error {
 	// Some sanity checks
 	if env.SrcDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
@@ -133,12 +133,13 @@ func (env *Info) RunMake(stage string) error {
 
 	var stdout, stderr bytes.Buffer
 
-	logMsg := "make -j4"
-	makeCmd := exec.Command("make", "-j4")
-	if stage == "install" {
-		logMsg = "make -j4 install"
-		makeCmd = exec.Command("make", "-j4", "install")
+	if stage != "" {
+		args = append(args, stage)
 	}
+
+	args = append([]string{"-j4"}, args...)
+	logMsg := "make " + strings.Join(args, " ")
+	makeCmd := exec.Command("make", args...)
 	log.Printf("* Executing (from %s): %s", env.SrcDir, logMsg)
 
 	makeCmd.Dir = env.SrcDir
@@ -316,7 +317,7 @@ func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) er
 	/* SET THE BUILD DIRECTORY */
 
 	// The build directory is always in the scratch
-	env.BuildDir = filepath.Join(sysCfg.ScratchDir, "mpi_build_"+mpi.ID+"_"+mpi.Version)
+	env.BuildDir = filepath.Join(sysCfg.ScratchDir, sys.MPIBuildDirPrefix+mpi.ID+"_"+mpi.Version)
 	// We always initialize the build directory for MPI on the host
 	err := util.DirInit(env.BuildDir)
 	if err != nil {
@@ -327,7 +328,7 @@ func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) er
 
 	if sysCfg.Persistent == "" {
 		// Create a temporary directory where to install MPI
-		env.InstallDir = filepath.Join(sysCfg.ScratchDir, "mpi_install_"+mpi.ID+"-"+mpi.Version)
+		env.InstallDir = filepath.Join(sysCfg.ScratchDir, sys.MPIInstallDirPrefix+mpi.ID+"-"+mpi.Version)
 		err := util.DirInit(env.InstallDir)
 		if err != nil {
 			return fmt.Errorf("failed to initialize directory %s: %s", env.InstallDir, err)

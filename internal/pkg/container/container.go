@@ -276,7 +276,7 @@ func GetContainerInstallDir(appInfo *app.Info) string {
 		return ""
 	}
 
-	return "mpi_container_" + appInfo.Name
+	return sys.ContainerInstallDirPrefix + appInfo.Name
 }
 
 // GetContainerDefaultName returns the default name for any container based on the configuration details

@@ -24,6 +24,15 @@ const (
 
 	// DefaultUbuntuDistro is the default Ubuntu distribution we use
 	DefaultUbuntuDistro = "disco"
+
+	SingularityInstallDirPrefix = "install_singularity-"
+	SingularityBuildDirPrefix   = "build_singularity-"
+	SingularityScratchDirPrefix = "scratch_singularity-"
+
+	MPIInstallDirPrefix = "mpi_install_"
+	MPIBuildDirPrefix   = "mpi_build_"
+
+	ContainerInstallDirPrefix = "mpi_container_"
 )
 
 // SetConfigFn is a "function pointer" that lets us store the configuration of a given job manager

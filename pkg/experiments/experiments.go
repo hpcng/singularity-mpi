@@ -139,7 +139,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 		return false, expRes, execRes
 	}
 
-	execRes = b.InstallHost(&myHostMPICfg.Implem, &jobmgr, &myHostMPICfg.Buildenv, sysCfg)
+	execRes = b.InstallOnHost(&myHostMPICfg.Implem, &myHostMPICfg.Buildenv, sysCfg)
 	if execRes.Err != nil {
 		execRes.Err = fmt.Errorf("failed to install host MPI: %s", execRes.Err)
 		err = launcher.SaveErrorDetails(&exp.HostMPI, &myContainerMPICfg.Implem, sysCfg, &execRes)

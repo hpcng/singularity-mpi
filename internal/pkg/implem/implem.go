@@ -14,6 +14,9 @@ const (
 
 	// IMPI is the identifier for Intel MPI
 	IMPI = "intel"
+
+	// Singularity is the identifier for Singularity
+	SY = "singularity"
 )
 
 // Info gathers all data about a specific MPI implementation
