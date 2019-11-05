@@ -89,7 +89,7 @@ func CreateMPIConfigFile() (string, error) {
 	}
 
 	syMPIConfigFile := GetPathToSyMPIConfigFile()
-	log.Printf("-> Creating/update SyMPI configuration file: %s", syMPIConfigFile)
+	log.Printf("-> Creating/updating SyMPI configuration file: %s", syMPIConfigFile)
 	if !util.PathExists(syMPIConfigFile) {
 		data, err := initMPIConfigFile()
 		if err != nil {
