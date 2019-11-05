@@ -17,11 +17,10 @@ import (
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/container"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/configparser"
 	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
+	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
@@ -67,7 +66,7 @@ func runExperiment(e exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig)
 func createContainerEnvCfg(e *exp.Config, sysCfg *sys.Config) error {
 	/* SET THE INSTALL DIRECTORY */
 
-	containerName := container.GetContainerDefaultName(e.ContainerMPI.ID, e.ContainerMPI.Version, e.App.Name, container.HybridModel)
+	containerName := container.GetContainerDefaultName(e.Container.Distro, e.ContainerMPI.ID, e.ContainerMPI.Version, e.App.Name, container.HybridModel)
 	containerDirName := sys.ContainerInstallDirPrefix + containerName
 	if sysCfg.Persistent == "" {
 		e.ContainerBuildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir)
@@ -137,6 +136,7 @@ func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfi
 		var err error
 
 		e.App = getAppData(sysCfg)
+		e.Container.Distro = "ubuntu:" + sys.DefaultUbuntuDistro
 
 		err = buildenv.CreateDefaultHostEnvCfg(&e.HostBuildEnv, &e.HostMPI, sysCfg)
 		if err != nil {

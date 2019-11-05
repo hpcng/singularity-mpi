@@ -17,8 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/app"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -267,21 +265,9 @@ func Upload(containerInfo *Config, sysCfg *sys.Config) error {
 	return nil
 }
 
-// GetContainerInstallDir returns the standard directory name where the container's
-// related files will be stored
-func GetContainerInstallDir(appInfo *app.Info) string {
-	// Sanity checks
-	if appInfo.Name == "" {
-		log.Println("[WARN] Undefined application name")
-		return ""
-	}
-
-	return sys.ContainerInstallDirPrefix + appInfo.Name
-}
-
 // GetContainerDefaultName returns the default name for any container based on the configuration details
-func GetContainerDefaultName(mpiID string, mpiVersion string, appName string, model string) string {
-	return mpiID + "-" + mpiVersion + "-" + appName + "-" + model
+func GetContainerDefaultName(distro string, mpiID string, mpiVersion string, appName string, model string) string {
+	return strings.Replace(distro, ":", "-", -1) + "-" + mpiID + "-" + mpiVersion + "-" + appName + "-" + model
 }
 
 func parseInspectOutput(output string) (Config, implem.Info) {

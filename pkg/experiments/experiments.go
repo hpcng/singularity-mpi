@@ -116,12 +116,13 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 
 	myContainerMPICfg.Implem = exp.ContainerMPI
 	myContainerMPICfg.Buildenv = exp.ContainerBuildEnv
-	myContainerMPICfg.Container.Name = container.GetContainerDefaultName(exp.ContainerMPI.ID, exp.ContainerMPI.Version, exp.App.Name, container.HybridModel) + ".sif"
+	myContainerMPICfg.Container.Name = container.GetContainerDefaultName(exp.Container.Distro, exp.ContainerMPI.ID, exp.ContainerMPI.Version, exp.App.Name, container.HybridModel) + ".sif"
 	myContainerMPICfg.Container.Path = filepath.Join(myContainerMPICfg.Buildenv.InstallDir, myContainerMPICfg.Container.Name)
 	myContainerMPICfg.Container.Model = container.HybridModel
 	myContainerMPICfg.Container.URL = sy.GetImageURL(&myContainerMPICfg.Implem, sysCfg)
 	myContainerMPICfg.Container.BuildDir = myContainerMPICfg.Buildenv.BuildDir
 	myContainerMPICfg.Container.InstallDir = myContainerMPICfg.Buildenv.InstallDir
+	myContainerMPICfg.Container.Distro = exp.Container.Distro
 
 	/* INSTALL MPI ON THE HOST */
 
@@ -160,6 +161,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 
 	log.Println("* Container MPI configuration *")
 	log.Println("-> Build container in", exp.ContainerBuildEnv.BuildDir)
+	log.Println("-> Target Linux distribution in container:", exp.Container.Distro)
 	log.Println("-> Storing container in", exp.ContainerBuildEnv.InstallDir)
 	log.Println("-> MPI implementation:", myContainerMPICfg.Implem.ID)
 	log.Println("-> MPI version:", myContainerMPICfg.Implem.Version)
