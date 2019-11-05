@@ -68,7 +68,7 @@ func createContainerEnvCfg(e *exp.Config, sysCfg *sys.Config) error {
 	/* SET THE INSTALL DIRECTORY */
 
 	containerName := container.GetContainerDefaultName(e.ContainerMPI.ID, e.ContainerMPI.Version, e.App.Name, container.HybridModel)
-	containerDirName := "mpi_container_" + containerName
+	containerDirName := sys.ContainerInstallDirPrefix + containerName
 	if sysCfg.Persistent == "" {
 		e.ContainerBuildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir)
 		err := util.DirInit(e.ContainerBuildEnv.InstallDir)

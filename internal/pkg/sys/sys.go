@@ -24,6 +24,24 @@ const (
 
 	// DefaultUbuntuDistro is the default Ubuntu distribution we use
 	DefaultUbuntuDistro = "disco"
+
+	// SingularityInstallDirPrefix is the default prefix for the directory name to use for an installation of Singularity
+	SingularityInstallDirPrefix = "install_singularity-"
+
+	// SingularityBuildDirPrefix is the default prefix for the directory name where Singularity is built
+	SingularityBuildDirPrefix = "build_singularity-"
+
+	// SingularityScratchDirPrefix is the default prefix for the directory name to use as scratch for preparing Singularity
+	SingularityScratchDirPrefix = "scratch_singularity-"
+
+	// MPIInstallDirPrefix is the default prefix for the directory name where a version of MPI is installed
+	MPIInstallDirPrefix = "mpi_install_"
+
+	// MPIBuildDirPrefix is the default prefix for the directory name where a version of MPI is built
+	MPIBuildDirPrefix = "mpi_build_"
+
+	// ContainerInstallDirPrefix is the default prefix for the directory name where an MPI-based container is stored
+	ContainerInstallDirPrefix = "mpi_container_"
 )
 
 // SetConfigFn is a "function pointer" that lets us store the configuration of a given job manager

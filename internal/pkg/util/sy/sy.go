@@ -167,3 +167,16 @@ func IsSudoCmd(cmd string, sysCfg *sys.Config) bool {
 	}
 	return false
 }
+
+func getSingularityConfigFilePath(sysCfg *sys.Config) string {
+	return filepath.Join(sysCfg.EtcDir, "singularity.conf")
+}
+
+func LoadSingularityReleaseConf(sysCfg *sys.Config) ([]kv.KV, error) {
+	file := getSingularityConfigFilePath(sysCfg)
+	kvs, err := kv.LoadKeyValueConfig(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read configuration from %s: %s", file, err)
+	}
+	return kvs, nil
+}

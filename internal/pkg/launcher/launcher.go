@@ -104,11 +104,27 @@ func Load() (sys.Config, jm.JM, network.Info, error) {
 	}
 	cfg.SingularityBin, err = exec.LookPath("singularity")
 	if err != nil {
-		return cfg, jobmgr, net, fmt.Errorf("failed to find the Singularity binary")
+		log.Printf("[WARN] failed to find the Singularity binary")
 	}
 	cfg.SudoBin, err = exec.LookPath("sudo")
 	if err != nil {
 		return cfg, jobmgr, net, fmt.Errorf("sudo not available: %s", err)
+	}
+
+	// Parse and load the sympi configuration file
+	sympiKVs, err := sy.LoadMPIConfigFile()
+	if err != nil {
+		log.Printf("failed to run configuration from singularity-mpi configuration file: %s", err)
+	}
+	val := kv.GetValue(sympiKVs, sy.NoPrivKey)
+	if val == "" {
+		cfg.Nopriv = false
+	} else {
+		cfg.Nopriv = true
+	}
+	val = kv.GetValue(sympiKVs, sy.SudoCmdsKey)
+	if val != "" {
+		cfg.SudoSyCmds = strings.Split(val, " ")
 	}
 
 	// Load the job manager component first
