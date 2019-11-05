@@ -644,6 +644,12 @@ func main() {
 		}
 	}
 
+	envFile, err := getEnvFile()
+	if err != nil || !util.FileExists(envFile) {
+		fmt.Println("SyMPI is not initialize, please run the 'sympi_init' command first")
+		os.Exit(1)
+	}
+
 	sympiDir := sys.GetSympiDir()
 
 	if *list {
