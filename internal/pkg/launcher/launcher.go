@@ -117,9 +117,9 @@ func Load() (sys.Config, jm.JM, network.Info, error) {
 		log.Printf("failed to run configuration from singularity-mpi configuration file: %s", err)
 	}
 	val := kv.GetValue(sympiKVs, sy.NoPrivKey)
-	if val == "" {
-		cfg.Nopriv = false
-	} else {
+	cfg.Nopriv = false
+	nopriv, err := strconv.ParseBool(val)
+	if err != nil && val != "" && nopriv {
 		cfg.Nopriv = true
 	}
 	val = kv.GetValue(sympiKVs, sy.SudoCmdsKey)
