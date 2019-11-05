@@ -25,7 +25,7 @@ int main (int argc, char **argv) {
         goto exit_with_error;
     }
 
-    fprintf (stdout, "Hello, I am rank %d/%d", myrank, size);
+    fprintf (stdout, "Hello, I am rank %d/%d\n", myrank, size);
 
     MPI_Finalize();
 
