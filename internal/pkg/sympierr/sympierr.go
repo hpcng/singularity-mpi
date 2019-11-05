@@ -12,3 +12,6 @@ var ErrNotAvailable = errors.New("item not available")
 
 // ErrFileExists is the error returned when trying to access a file that does not exist
 var ErrFileExists = errors.New("file already exists")
+
+// ErrSingularityNotInstalled is the error returned when Singularity is not installed
+var ErrSingularityNotInstalled = errors.New("Singularity not available")

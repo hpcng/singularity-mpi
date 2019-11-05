@@ -324,8 +324,10 @@ func GetMetadata(imgPath string, sysCfg *sys.Config) (Config, implem.Info, error
 	var stdout, stderr bytes.Buffer
 	var cmd *exec.Cmd
 	if sy.IsSudoCmd("inspect", sysCfg) {
+		log.Printf("Executing %s %s inspect %s\n", sysCfg.SudoBin, sysCfg.SingularityBin, imgPath)
 		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "inspect", imgPath)
 	} else {
+		log.Printf("Executing %s inspect %s\n", sysCfg.SingularityBin, imgPath)
 		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "inspect", imgPath)
 	}
 	cmd.Stdout = &stdout

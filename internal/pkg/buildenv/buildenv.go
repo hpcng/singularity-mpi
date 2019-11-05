@@ -76,9 +76,11 @@ func (env *Info) Unpack() error {
 
 	// Figure out the extension of the tarball
 	format := util.DetectTarballFormat(env.SrcPath)
-
 	if format == "" {
-		return fmt.Errorf("failed to detect format of file %s", env.SrcPath)
+		// A typical use case here is a single file that just needs to be compiled
+		log.Printf("%s does not seem to need to be unpacked, skipping...", env.SrcPath)
+		env.SrcDir = env.BuildDir
+		return nil
 	}
 
 	// At the moment we always assume we have to use the tar command
@@ -125,7 +127,7 @@ func (env *Info) Unpack() error {
 }
 
 // RunMake executes the appropriate command to build the software
-func (env *Info) RunMake(args []string, stage string) error {
+func (env *Info) RunMake(priv bool, args []string, stage string) error {
 	// Some sanity checks
 	if env.SrcDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
@@ -139,7 +141,17 @@ func (env *Info) RunMake(args []string, stage string) error {
 
 	args = append([]string{"-j4"}, args...)
 	logMsg := "make " + strings.Join(args, " ")
-	makeCmd := exec.Command("make", args...)
+	var makeCmd *exec.Cmd
+	if !priv {
+		makeCmd = exec.Command("make", args...)
+	} else {
+		sudoBin, err := exec.LookPath("sudo")
+		if err != nil {
+			return fmt.Errorf("failed to find the sudo binary: %s", err)
+		}
+		args = append([]string{"make"}, args...)
+		makeCmd = exec.Command(sudoBin, args...)
+	}
 	log.Printf("* Executing (from %s): %s", env.SrcDir, logMsg)
 
 	makeCmd.Dir = env.SrcDir

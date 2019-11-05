@@ -48,6 +48,9 @@ type GetDeffileTemplateTagsFn func() deffile.TemplateTags
 
 // Builder gathers all the data specific to a software builder
 type Builder struct {
+	// PrivInstall specifies whether install needs to be executed with sudo
+	PrivInstall bool
+
 	// Configure is the function to call to configure the software
 	Configure ConfigureFn
 
@@ -110,7 +113,7 @@ func (b *Builder) compile(pkg *implem.Info, env *buildenv.Info, sysCfg *sys.Conf
 		return res
 	}
 
-	res.Err = env.RunMake(makeExtraArgs, "")
+	res.Err = env.RunMake(false, makeExtraArgs, "")
 	return res
 }
 
@@ -133,7 +136,7 @@ func (b *Builder) install(pkg *implem.Info, env *buildenv.Info, sysCfg *sys.Conf
 		res.Err = fmt.Errorf("unable to find Makefile: %s", err)
 		return res
 	}
-	res.Err = env.RunMake(makeExtraArgs, "install")
+	res.Err = env.RunMake(b.PrivInstall, makeExtraArgs, "install")
 	return res
 }
 

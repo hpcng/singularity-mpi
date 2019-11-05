@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
 )
 
 const (
@@ -54,7 +56,7 @@ func checkSingularityInstall() error {
 	binPath, err := exec.LookPath("singularity")
 	if err != nil {
 		log.Printf("* Checking for Singularity\tfail")
-		return fmt.Errorf("failed to find singularity; please make sure Singularity is correctly installed: %s", err)
+		return sympierr.ErrSingularityNotInstalled
 	}
 
 	// Now we try to build a very simple image
@@ -97,16 +99,16 @@ func checkPrereqBinaries() error {
 // CheckSystemConfig checks the system configuration to ensure that the tool can run correctly
 func CheckSystemConfig() error {
 	err := checkSingularityInstall()
-	if err != nil {
+	if err != nil && err != sympierr.ErrSingularityNotInstalled {
 		return err
 	}
 
-	err = checkPrereqBinaries()
-	if err != nil {
-		return err
+	prereqErr := checkPrereqBinaries()
+	if prereqErr != nil {
+		return prereqErr
 	}
 
-	return nil
+	return err
 }
 
 // CheckBuildPrivilege checks if we can build an image for a definition file on the system

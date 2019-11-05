@@ -28,6 +28,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
@@ -85,6 +86,9 @@ func displayInstalled(dir string) error {
 		return fmt.Errorf("failed to read %s: %s", dir, err)
 	}
 
+	curMPIVersion := getLoadedMPI()
+	curSingularityVersion := getLoadedSingularity()
+
 	hostInstalls, err := getHostMPIInstalls(entries)
 	if err != nil {
 		return fmt.Errorf("unable to get the install of MPIs installed on the host: %s", err)
@@ -101,6 +105,9 @@ func displayInstalled(dir string) error {
 	if len(singularities) > 0 {
 		fmt.Printf("Available Singularity installation(s) on the host:\n")
 		for _, sy := range singularities {
+			if sy == curSingularityVersion {
+				sy = sy + " (L)"
+			}
 			fmt.Printf("\tsingularity:%s\n", sy)
 		}
 		fmt.Printf("\n")
@@ -109,8 +116,13 @@ func displayInstalled(dir string) error {
 	}
 
 	if len(hostInstalls) > 0 {
-		fmt.Printf("Available MPI installation(s) on the host:\n\t")
-		fmt.Println(strings.Join(hostInstalls, "\n\t"))
+		fmt.Printf("Available MPI installation(s) on the host:\n")
+		for _, mpi := range hostInstalls {
+			if mpi == curMPIVersion {
+				mpi = mpi + " (L)"
+			}
+			fmt.Printf("\t%s\n", mpi)
+		}
 		fmt.Printf("\n")
 	} else {
 		fmt.Printf("No MPI available on the host\n\n")
@@ -193,6 +205,36 @@ func getMPIDetails(desc string) (string, string) {
 		return "", ""
 	}
 	return tokens[0], tokens[1]
+}
+
+func getLoadedSingularity() string {
+	curPath := os.Getenv("PATH")
+	pathTokens := strings.Split(curPath, ":")
+	for _, t := range pathTokens {
+		if strings.Contains(t, sys.SingularityInstallDirPrefix) {
+			t = strings.Replace(t, sys.GetSympiDir()+"/", "", -1)
+			t = strings.Replace(t, sys.SingularityInstallDirPrefix, "", -1)
+			t = strings.Replace(t, "/bin", "", -1)
+			return strings.Replace(t, "-", ":", -1)
+		}
+	}
+
+	return ""
+}
+
+func getLoadedMPI() string {
+	curPath := os.Getenv("PATH")
+	pathTokens := strings.Split(curPath, ":")
+	for _, t := range pathTokens {
+		if strings.Contains(t, sys.MPIInstallDirPrefix) {
+			t = strings.Replace(t, sys.GetSympiDir()+"/", "", -1)
+			t = strings.Replace(t, sys.MPIInstallDirPrefix, "", -1)
+			t = strings.Replace(t, "/bin", "", -1)
+			return strings.Replace(t, "-", ":", -1)
+		}
+	}
+
+	return ""
 }
 
 func cleanupEnvVar(prefix string) ([]string, []string) {
@@ -337,21 +379,6 @@ func getDefaultSysConfig() sys.Config {
 	if err != nil {
 		log.Fatalf("unable to load configuration: %s", err)
 
-	}
-
-	sympiKVs, err := sy.LoadMPIConfigFile()
-	if err != nil {
-		log.Printf("failed to run configuration from singularity-mpi configuration file: %s", err)
-	}
-	val := kv.GetValue(sympiKVs, sy.NoPrivKey)
-	if val == "" {
-		sysCfg.Nopriv = false
-	} else {
-		sysCfg.Nopriv = true
-	}
-	val = kv.GetValue(sympiKVs, sy.SudoCmdsKey)
-	if val != "" {
-		sysCfg.SudoSyCmds = strings.Split(val, " ")
 	}
 
 	return sysCfg
@@ -502,6 +529,11 @@ func runContainer(containerDesc string, sysCfg *sys.Config) error {
 		fmt.Printf("%s %s was found on the host as a compatible version\n", hostMPI.ID, hostMPI.Version)
 	}
 
+	fmt.Printf("Container is in %s mode\n", containerInfo.Model)
+	if containerInfo.Model == container.BindModel {
+		fmt.Printf("Binding/mounting %s %s on host -> %s\n", hostMPI.ID, hostMPI.Version, containerInfo.MPIDir)
+	}
+
 	err = loadMPI(hostMPI.ID + ":" + hostMPI.Version)
 	if err != nil {
 		return fmt.Errorf("failed to load MPI %s %s on host: %s", hostMPI.ID, hostMPI.Version, err)
@@ -553,6 +585,7 @@ func installSingularity(id string, sysCfg *sys.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to load a builder: %s", err)
 	}
+	b.PrivInstall = true
 
 	var buildEnv buildenv.Info
 	buildEnv.InstallDir = filepath.Join(sys.GetSympiDir(), sys.SingularityInstallDirPrefix+sy.Version)
@@ -606,7 +639,7 @@ func main() {
 	if sysCfg.Debug {
 		sysCfg.Verbose = true
 		err := checker.CheckSystemConfig()
-		if err != nil {
+		if err != nil && err != sympierr.ErrSingularityNotInstalled {
 			log.Fatalf("the system is not correctly setup: %s", err)
 		}
 	}
