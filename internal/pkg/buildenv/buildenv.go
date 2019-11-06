@@ -153,7 +153,9 @@ func (env *Info) RunMake(priv bool, args []string, stage string) error {
 		makeCmd = exec.Command(sudoBin, args...)
 	}
 	log.Printf("* Executing (from %s): %s", env.SrcDir, logMsg)
-
+	if len(env.Env) > 0 {
+		makeCmd.Env = env.Env
+	}
 	makeCmd.Dir = env.SrcDir
 	makeCmd.Stderr = &stderr
 	makeCmd.Stdout = &stdout

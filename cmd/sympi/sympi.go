@@ -419,6 +419,7 @@ func installMPIonHost(mpiDesc string, sysCfg *sys.Config) error {
 	if err != nil {
 		return fmt.Errorf("unable to initialize scratch directory %s: %s", sysCfg.ScratchDir, err)
 	}
+	defer os.RemoveAll(sysCfg.ScratchDir)
 
 	mpiConfigFile := mpi.GetMPIConfigFile(mpiCfg.ID, sysCfg)
 	kvs, err := kv.LoadKeyValueConfig(mpiConfigFile)
@@ -437,6 +438,7 @@ func installMPIonHost(mpiDesc string, sysCfg *sys.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to set host build environment: %s", err)
 	}
+	defer os.RemoveAll(buildEnv.BuildDir)
 
 	execRes := b.InstallOnHost(&mpiCfg, &buildEnv, sysCfg)
 	if execRes.Err != nil {
@@ -590,7 +592,13 @@ func installSingularity(id string, sysCfg *sys.Config) error {
 	var buildEnv buildenv.Info
 	buildEnv.InstallDir = filepath.Join(sys.GetSympiDir(), sys.SingularityInstallDirPrefix+sy.Version)
 	buildEnv.ScratchDir = filepath.Join(sys.GetSympiDir(), sys.SingularityScratchDirPrefix+sy.Version)
-	buildEnv.BuildDir = filepath.Join(sys.GetSympiDir(), sys.SingularityBuildDirPrefix+sy.Version)
+
+	// Building any version of Singularity, even if limiting ourselves to Singularity >= 3.0.0, in
+	// a generic way is not trivial, the installation procedure changed quite a bit over time. The
+	// best option at the moment is to assume that Singularity is simply a standard Go software
+	// with all the associated requirements, e.g., to be built from:
+	//   GOPATH/src/github.com/sylab/singularity
+	buildEnv.BuildDir = filepath.Join(sys.GetSympiDir(), sys.SingularityBuildDirPrefix+sy.Version, "src", "github.com", "sylabs")
 	err = util.DirInit(buildEnv.ScratchDir)
 	if err != nil {
 		return fmt.Errorf("failed to initialize %s: %s", buildEnv.ScratchDir, err)
