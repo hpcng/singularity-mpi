@@ -618,6 +618,40 @@ func installSingularity(id string, sysCfg *sys.Config) error {
 	return nil
 }
 
+func listAvail(sysCfg *sys.Config) error {
+	fmt.Println("The following versions of Singularity can be installed:")
+	cfgFile := filepath.Join(sysCfg.EtcDir, "singularity.conf")
+	kvs, err := kv.LoadKeyValueConfig(cfgFile)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration from %s: %s", cfgFile, err)
+	}
+	for _, e := range kvs {
+		fmt.Printf("\tsingularity:%s\n", e.Key)
+	}
+
+	fmt.Println("The following versions of Open MPI can be installed:")
+	cfgFile = filepath.Join(sysCfg.EtcDir, "openmpi.conf")
+	kvs, err = kv.LoadKeyValueConfig(cfgFile)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration from %s: %s", cfgFile, err)
+	}
+	for _, e := range kvs {
+		fmt.Printf("\topenmpi:%s\n", e.Key)
+	}
+
+	fmt.Println("The following versions of MPICH can be installed:")
+	cfgFile = filepath.Join(sysCfg.EtcDir, "mpich.conf")
+	kvs, err = kv.LoadKeyValueConfig(cfgFile)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration from %s: %s", cfgFile, err)
+	}
+	for _, e := range kvs {
+		fmt.Printf("\tmpich:%s\n", e.Key)
+	}
+
+	return nil
+}
+
 func main() {
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	debug := flag.Bool("d", false, "Enable debug mode")
@@ -627,6 +661,7 @@ func main() {
 	install := flag.String("install", "", "MPI implementation to install, e.g., openmpi:4.0.2")
 	uninstall := flag.String("uninstall", "", "MPI implementation to uninstall, e.g., openmpi:4.0.2")
 	run := flag.String("run", "", "Run a container")
+	avail := flag.Bool("avail", false, "List all available versions of MPI implementations and Singularity that can be installed on the host")
 
 	flag.Parse()
 
@@ -725,5 +760,12 @@ func main() {
 			log.Fatalf("impossible to run container %s: %s", *run, err)
 		}
 
+	}
+
+	if *avail {
+		err := listAvail(&sysCfg)
+		if err != nil {
+			log.Fatalf("impossible to list available software that can be installed")
+		}
 	}
 }
