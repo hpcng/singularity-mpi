@@ -18,11 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"

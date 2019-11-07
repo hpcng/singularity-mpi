@@ -14,10 +14,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/container"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/ldd"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"

@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
