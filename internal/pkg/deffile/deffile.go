@@ -443,6 +443,7 @@ func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) e
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
+	log.Printf("- Defintion file is %s\n", data.Path)
 	f, err := os.Create(data.Path)
 	if err != nil {
 		return fmt.Errorf("failed to create %s: %s", data.Path, err)
