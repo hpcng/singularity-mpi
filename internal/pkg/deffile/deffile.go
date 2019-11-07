@@ -14,10 +14,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/container"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/ldd"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -443,6 +442,7 @@ func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) e
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
+	log.Printf("- Defintion file is %s\n", data.Path)
 	f, err := os.Create(data.Path)
 	if err != nil {
 		return fmt.Errorf("failed to create %s: %s", data.Path, err)

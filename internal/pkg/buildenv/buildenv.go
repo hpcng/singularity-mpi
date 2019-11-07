@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
@@ -153,7 +152,9 @@ func (env *Info) RunMake(priv bool, args []string, stage string) error {
 		makeCmd = exec.Command(sudoBin, args...)
 	}
 	log.Printf("* Executing (from %s): %s", env.SrcDir, logMsg)
-
+	if len(env.Env) > 0 {
+		makeCmd.Env = env.Env
+	}
 	makeCmd.Dir = env.SrcDir
 	makeCmd.Stderr = &stderr
 	makeCmd.Stdout = &stdout
@@ -298,25 +299,40 @@ func (env *Info) GetEnvLDPath() string {
 	return filepath.Join(env.InstallDir, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 }
 
+func (env *Info) lookPath(bin string) string {
+	for _, e := range env.Env {
+		envEntry := strings.Split(e, "=")
+		if envEntry[0] == "PATH" {
+			tokens := strings.Split(envEntry[1], ":")
+			for _, t := range tokens {
+				fullPath := filepath.Join(t, bin)
+				if util.FileExists(fullPath) {
+					return fullPath
+				}
+			}
+		}
+	}
+
+	return bin
+}
+
 // Install is a generic function to install a software
 func (env *Info) Install(p *SoftwarePackage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*time.Second)
 	defer cancel()
 
 	cmdElts := strings.Split(p.InstallCmd, " ")
-	binPath, err := exec.LookPath(cmdElts[0])
-	if err != nil {
-		// If we cannot find the executable, it is specific to the package
-		binPath = cmdElts[0]
-	}
+	binPath := env.lookPath(cmdElts[0])
+
 	log.Printf("Executing from %s: %s %s.", env.SrcDir, binPath, strings.Join(cmdElts[1:], " "))
+	log.Printf("Environment: %s\n", strings.Join(env.Env, "\n"))
 	cmd := exec.CommandContext(ctx, binPath, cmdElts[1:]...)
 	cmd.Dir = env.SrcDir
 	cmd.Env = env.Env
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to install %s: %s; stdout: %s; stderr: %s", p.Name, err, stdout.String(), stderr.String())
 	}

@@ -85,6 +85,10 @@ func DetectTarballFormat(filepath string) string {
 
 // CopyFile is a utility functions that copies a file
 func CopyFile(src string, dst string) error {
+	if src == dst {
+		return nil
+	}
+
 	log.Printf("* Copying %s to %s", src, dst)
 	// Check that the source file is valid
 	srcStat, err := os.Stat(src)
