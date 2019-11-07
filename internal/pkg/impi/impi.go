@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -25,7 +26,7 @@ import (
 // Constants related to Intel MPI
 const (
 	// IntelInstallPathPrefix is the prefix to use when referring to the installation directory for Intel MPI
-	IntelInstallPathPrefix         = "compilers_and_libraries/linux/mpi/intel64"
+	IntelInstallPathPrefix = "compilers_and_libraries/linux/mpi/intel64"
 
 	intelInstallConfFile           = "silent_install.cfg"
 	intelUninstallConfFile         = "silent_uninstall.cfg"
@@ -33,17 +34,17 @@ const (
 	intelUninstallConfFileTemplate = intelUninstallConfFile + ".tmpl"
 
 	// VersionTag is the tag used to refer to the MPI version in the IMPI template(s)
-	VersionTag           = "IMpiVersion"
+	VersionTag = "IMpiVersion"
 	// TarballTag is the tag used to refer to the tarball of IMPI in the IMPI template(s)
-	TarballTag           = "IMPITARBALL"
+	TarballTag = "IMPITARBALL"
 	// DirTag is the tag used to refer to the directory where IMPI is installed
-	DirTag               = "IMPIDIR" // todo: Should be removed
+	DirTag = "IMPIDIR" // todo: Should be removed
 	// InstallConffileTag is the tag used to refer to the path for the script to use to install IMPI
-	InstallConffileTag   = "IMPIINSTALLCONFFILE"
+	InstallConffileTag = "IMPIINSTALLCONFFILE"
 	// UninstallConffileTag is the tag used to refer to the path for the script to use to uninstall IMPI
 	UninstallConffileTag = "IMPIUNINSTALLCONFFILE"
 	// IfnetTag is the tag used to refer to the network interface in the IMPI template(s)
-	IfnetTag             = "NETWORKINTERFACE"
+	IfnetTag = "NETWORKINTERFACE"
 )
 
 // Config represents a configuration of Intel MPI
@@ -51,7 +52,7 @@ type Config struct {
 	// DefFile is the path to the definition file for a IMPI based container
 	DefFile string
 	// Info gathers all the information about the version of IMPI to use
-	Info    implem.Info
+	Info implem.Info
 }
 
 // GetDeffileTemplateTags returns all the tags used in IMPI template files
@@ -175,7 +176,7 @@ func SetupInstallScript(env *buildenv.Info, sysCfg *sys.Config) error {
 	// Copy silent script templates to install Intel MPI
 	intelSilentInstallTemplate := filepath.Join(sysCfg.TemplateDir, "intel", intelInstallConfFileTemplate)
 	intelSilentInstallConfig := filepath.Join(env.SrcDir, intelInstallConfFile)
-	fmt.Printf("Copying %s to %s\n", intelSilentInstallTemplate, intelSilentInstallConfig)
+	log.Printf("Copying %s to %s\n", intelSilentInstallTemplate, intelSilentInstallConfig)
 	err := util.CopyFile(intelSilentInstallTemplate, intelSilentInstallConfig)
 	if err != nil {
 		return fmt.Errorf("failed to copy %s to %s: %s", intelSilentInstallTemplate, intelSilentInstallConfig, err)
@@ -202,7 +203,7 @@ func RunScript(env *buildenv.Info, sysCfg *sys.Config, phase string) syexec.Resu
 	var configFile string
 	var res syexec.Result
 
-	fmt.Printf("Running %s script...\n", phase)
+	log.Printf("Running %s script...\n", phase)
 
 	switch phase {
 	case "install":
