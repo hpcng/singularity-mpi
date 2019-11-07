@@ -8,6 +8,7 @@ package experiments
 import (
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -114,6 +115,25 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	myHostMPICfg.Buildenv = exp.HostBuildEnv
 	myHostMPICfg.Implem = exp.HostMPI
 
+	if !util.PathExists(myHostMPICfg.Buildenv.BuildDir) {
+		err := os.MkdirAll(myHostMPICfg.Buildenv.BuildDir, 0755)
+		if err != nil {
+			execRes.Err = fmt.Errorf("failed to create %s: %s", myHostMPICfg.Buildenv.BuildDir, err)
+			return false, expRes, execRes
+		}
+	} else {
+		log.Printf("Build directory on host already exists: %s", myHostMPICfg.Buildenv.BuildDir)
+	}
+	if !util.PathExists(myHostMPICfg.Buildenv.ScratchDir) {
+		err := os.MkdirAll(myHostMPICfg.Buildenv.ScratchDir, 0755)
+		if err != nil {
+			execRes.Err = fmt.Errorf("failed to create %s: %s", myHostMPICfg.Buildenv.ScratchDir, err)
+			return false, expRes, execRes
+		}
+	} else {
+		log.Printf("Build directory on host already exists: %s", myHostMPICfg.Buildenv.ScratchDir)
+	}
+
 	myContainerMPICfg.Implem = exp.ContainerMPI
 	myContainerMPICfg.Buildenv = exp.ContainerBuildEnv
 	myContainerMPICfg.Container.Name = container.GetContainerDefaultName(exp.Container.Distro, exp.ContainerMPI.ID, exp.ContainerMPI.Version, exp.App.Name, container.HybridModel) + ".sif"
@@ -123,6 +143,25 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	myContainerMPICfg.Container.BuildDir = myContainerMPICfg.Buildenv.BuildDir
 	myContainerMPICfg.Container.InstallDir = myContainerMPICfg.Buildenv.InstallDir
 	myContainerMPICfg.Container.Distro = exp.Container.Distro
+
+	if !util.PathExists(myContainerMPICfg.Buildenv.BuildDir) {
+		err := os.MkdirAll(myContainerMPICfg.Buildenv.BuildDir, 0755)
+		if err != nil {
+			execRes.Err = fmt.Errorf("failed to create %s: %s", myContainerMPICfg.Buildenv.BuildDir, err)
+			return false, expRes, execRes
+		}
+	} else {
+		log.Printf("Build directory on host already exists: %s", myContainerMPICfg.Buildenv.BuildDir)
+	}
+	if !util.PathExists(myContainerMPICfg.Buildenv.ScratchDir) {
+		err := os.MkdirAll(myContainerMPICfg.Buildenv.ScratchDir, 0755)
+		if err != nil {
+			execRes.Err = fmt.Errorf("failed to create %s: %s", myContainerMPICfg.Buildenv.ScratchDir, err)
+			return false, expRes, execRes
+		}
+	} else {
+		log.Printf("Build directory on host already exists: %s", myContainerMPICfg.Buildenv.ScratchDir)
+	}
 
 	/* INSTALL MPI ON THE HOST */
 
