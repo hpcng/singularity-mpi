@@ -144,6 +144,11 @@ func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfi
 			failure = false
 			log.Printf("[ERROR] failed to set host build environment: %s", err)
 		}
+		defer func() {
+			os.RemoveAll(e.HostBuildEnv.ScratchDir)
+			os.RemoveAll(e.HostBuildEnv.BuildDir)
+		}()
+
 		err = createContainerEnvCfg(&e, sysCfg)
 		if err != nil {
 			success = false
