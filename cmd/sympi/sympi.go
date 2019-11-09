@@ -207,12 +207,22 @@ func getMPIDetails(desc string) (string, string) {
 	return tokens[0], tokens[1]
 }
 
+func getSyMPIBaseDir() string {
+	baseDir := sys.GetSympiDir()
+	// We need to make sure that we do not end up with a / we do not want
+	if string(baseDir[len(baseDir)-1]) != "/" {
+		baseDir = baseDir + "/"
+	}
+	return baseDir
+}
+
 func getLoadedSingularity() string {
 	curPath := os.Getenv("PATH")
 	pathTokens := strings.Split(curPath, ":")
 	for _, t := range pathTokens {
 		if strings.Contains(t, sys.SingularityInstallDirPrefix) {
-			t = strings.Replace(t, sys.GetSympiDir()+"/", "", -1)
+			baseDir := getSyMPIBaseDir()
+			t = strings.Replace(t, baseDir, "", -1)
 			t = strings.Replace(t, sys.SingularityInstallDirPrefix, "", -1)
 			t = strings.Replace(t, "/bin", "", -1)
 			return strings.Replace(t, "-", ":", -1)
@@ -227,7 +237,8 @@ func getLoadedMPI() string {
 	pathTokens := strings.Split(curPath, ":")
 	for _, t := range pathTokens {
 		if strings.Contains(t, sys.MPIInstallDirPrefix) {
-			t = strings.Replace(t, sys.GetSympiDir()+"/", "", -1)
+			baseDir := getSyMPIBaseDir()
+			t = strings.Replace(t, baseDir, "", -1)
 			t = strings.Replace(t, sys.MPIInstallDirPrefix, "", -1)
 			t = strings.Replace(t, "/bin", "", -1)
 			return strings.Replace(t, "-", ":", -1)
