@@ -23,26 +23,47 @@ import (
 )
 
 func main() {
-	sysCfg, _, _, err := launcher.Load()
-	if err != nil {
-		log.Fatalf("unable to load configuration: %s", err)
-
-	}
 
 	/* Argument parsing */
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	debug := flag.Bool("d", false, "Enable debug mode")
 	appContainizer := flag.String("conf", "", "Path to the configuration file for automatically containerization an application")
 	upload := flag.Bool("upload", false, "Upload generated images (appropriate configuration files need to specify the registry's URL")
-	persistent := flag.Bool("persistent-installs", false, "Keep the MPI installations on the host and the container images in the specified directory (instead of deleting everything once an experiment terminates). Default is '~/.sympi', set SYMPI_INSTALL_DIR to overwrite")
+	noinstall := flag.Bool("noinstall", false, "Keep the MPI installations on the host and the container images in the specified directory (instead of deleting everything once an experiment terminates). Default is '~/.sympi', set SYMPI_INSTALL_DIR to overwrite")
 
 	flag.Parse()
+
+	// Save the options passed in through the command flags
+	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
+	logFile := util.OpenLogFile("sycontainerize")
+	defer logFile.Close()
+	if *verbose || *debug {
+		nultiWriters := io.MultiWriter(os.Stdout, logFile)
+		log.SetOutput(nultiWriters)
+	} else {
+		log.SetOutput(ioutil.Discard)
+	}
+
+	sysCfg, _, _, err := launcher.Load()
+	if err != nil {
+		log.Fatalf("unable to load configuration: %s", err)
+
+	}
+
+	if *debug {
+		sysCfg.Debug = true
+		sysCfg.Verbose = true
+		err = checker.CheckSystemConfig()
+		if err != nil {
+			log.Fatalf("the system is not correctly setup: %s", err)
+		}
+	}
 
 	sysCfg.AppContainizer = *appContainizer
 	sysCfg.Upload = *upload
 	sysCfg.Verbose = *verbose
 	sysCfg.Debug = *debug
-	if *persistent {
+	if !*noinstall {
 		sysCfg.Persistent = sys.GetSympiDir()
 	}
 
@@ -62,26 +83,7 @@ func main() {
 		log.Fatalf("failed to load the tool's configuration: %s", err)
 	}
 
-	// Save the options passed in through the command flags
-	log.Println("* Setting the tool's logging mechanism...")
-	if sysCfg.Debug {
-		sysCfg.Verbose = true
-		err = checker.CheckSystemConfig()
-		if err != nil {
-			log.Fatalf("the system is not correctly setup: %s", err)
-		}
-	}
-	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
-	logFile := util.OpenLogFile("sycontainerize")
-	defer logFile.Close()
-	if sysCfg.Verbose {
-		nultiWriters := io.MultiWriter(os.Stdout, logFile)
-		log.SetOutput(nultiWriters)
-	} else {
-		log.SetOutput(ioutil.Discard)
-	}
-
-	log.Println("* Creating container your application...")
+	log.Println("* Creating container for your application...")
 	_, err = containizer.ContainerizeApp(&sysCfg)
 	if err != nil {
 		log.Fatalf("failed to create container for app: %s", err)

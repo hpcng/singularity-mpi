@@ -381,3 +381,26 @@ func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) er
 func GetDefaultScratchDir(mpi *implem.Info) string {
 	return filepath.Join(sys.GetSympiDir(), "scratch-"+mpi.ID)
 }
+
+// Init ensures that the buildenv is correctly initialized
+func (e *Info) Init(sysCfg *sys.Config) error {
+	if !util.PathExists(e.ScratchDir) {
+		err := os.MkdirAll(e.ScratchDir, 0755)
+		if err != nil {
+			return fmt.Errorf("failed to create scratch directory %s: %s", e.ScratchDir, err)
+		}
+	}
+	if !util.PathExists(e.BuildDir) {
+		err := os.MkdirAll(e.BuildDir, 0755)
+		if err != nil {
+			return fmt.Errorf("failed to create build directory %s: %s", e.BuildDir, err)
+		}
+	}
+	if !util.PathExists(e.InstallDir) {
+		err := os.MkdirAll(e.InstallDir, 0755)
+		if err != nil {
+			return fmt.Errorf("failed to create build directory %s: %s", e.InstallDir, err)
+		}
+	}
+	return nil
+}

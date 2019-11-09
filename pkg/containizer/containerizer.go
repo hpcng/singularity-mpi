@@ -7,6 +7,7 @@ package containizer
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -150,51 +151,99 @@ func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) 
 	return deffileCfg, nil
 }
 
-func getCommonContainerConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) buildenv.Info {
+func getCommonContainerConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) (buildenv.Info, func(), error) {
 	// (deffile.DefFileData, buildenv.Info) {
 	var containerBuildEnv buildenv.Info
+	var err error
+	var cleanup func()
 
-	// These different structures are used during different stage of the creation of the container
-	// so yes we have some duplication in term of value stored in elements of different structures
-	// but this allows us to have fairly independent components without dependency circles.
-	containerBuildEnv.BuildDir = filepath.Join(kv.GetValue(kvs, "scratch_dir"), "container", "build")
-	containerBuildEnv.InstallDir = containerBuildEnv.BuildDir
-	containerBuildEnv.ScratchDir = kv.GetValue(kvs, "scratch_dir")
-	containerMPI.Container.BuildDir = containerBuildEnv.BuildDir
-	containerMPI.Container.InstallDir = containerBuildEnv.BuildDir
+	// Data from the user's configuration file
 	containerMPI.Container.Name = kv.GetValue(kvs, "app_name") + ".sif"
-	if sysCfg.Persistent == "" {
-		containerMPI.Container.Path = filepath.Join(kv.GetValue(kvs, "output_dir"), containerMPI.Container.Name)
-	} else {
-		containerInstallDir := filepath.Join(sysCfg.Persistent, sys.ContainerInstallDirPrefix+kv.GetValue(kvs, "app_name"))
-		containerMPI.Container.Path = filepath.Join(containerInstallDir, containerMPI.Container.Name)
-		if !util.PathExists(containerInstallDir) {
-			err := util.DirInit(containerInstallDir)
-			if err != nil {
-				log.Printf("[WARN] failed to create %s", containerInstallDir)
-			}
-		}
-	}
-	containerMPI.Container.DefFile = filepath.Join(kv.GetValue(kvs, "output_dir"), kv.GetValue(kvs, "app_name")+".def")
 	containerMPI.Container.Distro = kv.GetValue(kvs, "distro")
-	containerBuildEnv.InstallDir = filepath.Join(kv.GetValue(kvs, "output_dir"), "install")
 	containerMPI.Implem.ID = kv.GetValue(kvs, "mpi")
 	containerMPI.Implem.Version = kv.GetValue(kvs, "container_mpi")
 	containerMPI.Implem.URL = getMPIURL(kv.GetValue(kvs, "mpi"), containerMPI.Implem.Version, sysCfg)
 
-	return containerBuildEnv
+	// These different structures are used during different stage of the creation of the container
+	// so yes we have some duplication in term of value stored in elements of different structures
+	// but this allows us to have fairly independent components without dependency circles.
+	if sysCfg.Persistent == "" {
+		// If we do not integrate with the sympi (i.e., no persistent mode), all subdirectories
+		// in the system wide scratch directory or, if that directory is not defined, in a new
+		// temporary directory. In any case, the temporary directory will NOT
+		// be deleted since it will have both the container image and the definition file. The
+		// subdirectories in the temporary directory should be deleted automatically.
+		if sysCfg.ScratchDir != "" {
+			containerBuildEnv.ScratchDir = sysCfg.ScratchDir
+		} else {
+			containerBuildEnv.ScratchDir, err = ioutil.TempDir("", "")
+			if err != nil {
+				return containerBuildEnv, nil, fmt.Errorf("failed to create temporary directory: %s", err)
+			}
+		}
+		containerBuildEnv.BuildDir = filepath.Join(containerBuildEnv.ScratchDir, "container", "build")
+		containerBuildEnv.InstallDir = filepath.Join(containerBuildEnv.ScratchDir, "install")
+		containerMPI.Container.Path = filepath.Join(containerBuildEnv.ScratchDir, containerMPI.Container.Name)
+
+		cleanup = func() {
+			err := os.RemoveAll(containerBuildEnv.ScratchDir)
+			if err != nil {
+				log.Printf("failed to cleanup %s: %s", containerBuildEnv.ScratchDir, err)
+			}
+			err = os.RemoveAll(containerBuildEnv.BuildDir)
+			if err != nil {
+				log.Printf("failed to cleanup %s: %s", containerBuildEnv.BuildDir, err)
+			}
+			err = os.RemoveAll(containerBuildEnv.InstallDir)
+			if err != nil {
+				log.Printf("failed to cleanup %s: %s", containerBuildEnv.InstallDir, err)
+			}
+		}
+	} else {
+		containerBuildEnv.ScratchDir = filepath.Join(sysCfg.Persistent, "scratch_"+kv.GetValue(kvs, "app_name"))
+		containerBuildEnv.BuildDir = filepath.Join(sysCfg.Persistent, "build_"+kv.GetValue(kvs, "app_name"))
+		containerBuildEnv.InstallDir = filepath.Join(sysCfg.Persistent, sys.ContainerInstallDirPrefix+kv.GetValue(kvs, "app_name"))
+		containerMPI.Container.Path = filepath.Join(containerBuildEnv.InstallDir, containerMPI.Container.Name)
+
+		cleanup = func() {
+			err := os.RemoveAll(containerBuildEnv.ScratchDir)
+			if err != nil {
+				log.Printf("failed to cleanup %s: %s", containerBuildEnv.ScratchDir, err)
+			}
+			err = os.RemoveAll(containerBuildEnv.BuildDir)
+			if err != nil {
+				log.Printf("failed to cleanup %s: %s", containerBuildEnv.BuildDir, err)
+			}
+		}
+	}
+
+	containerMPI.Container.BuildDir = containerBuildEnv.BuildDir
+	containerMPI.Container.InstallDir = containerBuildEnv.InstallDir
+	containerMPI.Container.DefFile = filepath.Join(containerBuildEnv.BuildDir, kv.GetValue(kvs, "app_name")+".def")
+	if sysCfg.ScratchDir != "" {
+		log.Printf("Changing system-wide scratch directory from %s to %s\n", sysCfg.ScratchDir, containerBuildEnv.ScratchDir)
+	}
+	sysCfg.ScratchDir = containerBuildEnv.ScratchDir
+
+	return containerBuildEnv, cleanup, nil
 }
 
-func getHybridConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) buildenv.Info {
-	containerBuildEnv := getCommonContainerConfiguration(kvs, containerMPI, sysCfg)
+func getHybridConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) (buildenv.Info, func(), error) {
+	containerBuildEnv, cleanup, err := getCommonContainerConfiguration(kvs, containerMPI, sysCfg)
+	if err != nil {
+		return containerBuildEnv, cleanup, err
+	}
 	containerMPI.Container.Model = container.HybridModel
-	return containerBuildEnv
+	return containerBuildEnv, cleanup, nil
 }
 
-func getBindConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) buildenv.Info {
-	containerBuildEnv := getCommonContainerConfiguration(kvs, containerMPI, sysCfg)
+func getBindConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) (buildenv.Info, func(), error) {
+	containerBuildEnv, cleanup, err := getCommonContainerConfiguration(kvs, containerMPI, sysCfg)
+	if err != nil {
+		return containerBuildEnv, cleanup, err
+	}
 	containerMPI.Container.Model = container.BindModel
-	return containerBuildEnv
+	return containerBuildEnv, cleanup, nil
 }
 
 func installMPIonHost(kvs []kv.KV, hostBuildEnv *buildenv.Info, app *appConfig, sysCfg *sys.Config) error {
@@ -249,7 +298,6 @@ func installMPIonHost(kvs []kv.KV, hostBuildEnv *buildenv.Info, app *appConfig, 
 // ContainerizeApp will parse the configuration file specific to an app, install
 // the appropriate MPI on the host, as well as create the container.
 func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
-	//	var containerCfg container.Config
 	var containerMPI mpi.Config
 
 	skipHostMPI := false
@@ -262,12 +310,6 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	}
 
 	// Some sanity checks
-	if kv.GetValue(kvs, "scratch_dir") == "" {
-		return containerMPI.Container, fmt.Errorf("scratch directory is not defined")
-	}
-	if kv.GetValue(kvs, "output_dir") == "" {
-		return containerMPI.Container, fmt.Errorf("output directory is not defined")
-	}
 	if kv.GetValue(kvs, "app_name") == "" {
 		return containerMPI.Container, fmt.Errorf("Application's name is not defined")
 	}
@@ -290,13 +332,24 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	// Put together the container's metadata
 	var hostBuildEnv buildenv.Info
 	var containerBuildEnv buildenv.Info
+	var cleanup func()
 
 	switch kv.GetValue(kvs, mpiModelKey) {
 	case container.HybridModel:
-		containerBuildEnv = getHybridConfiguration(kvs, &containerMPI, sysCfg)
+		containerBuildEnv, cleanup, err = getHybridConfiguration(kvs, &containerMPI, sysCfg)
+		if err != nil {
+			return containerMPI.Container, fmt.Errorf("failed to set build environment: %s", err)
+		}
 	case container.BindModel:
-		containerBuildEnv = getBindConfiguration(kvs, &containerMPI, sysCfg)
+		containerBuildEnv, cleanup, err = getBindConfiguration(kvs, &containerMPI, sysCfg)
+		if err != nil {
+			return containerMPI.Container, fmt.Errorf("failed to set build environment: %s", err)
+		}
 	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+	containerMPI.Buildenv = containerBuildEnv
 
 	// Load some generic data
 	curTime := time.Now()
@@ -305,7 +358,6 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 		url = url + "/"
 	}
 	sysCfg.Registry = url + kv.GetValue(kvs, "app_name") + ":" + curTime.Format("20060102")
-	sysCfg.ScratchDir = kv.GetValue(kvs, "scratch_dir")
 
 	// Load the app configuration
 	var app appConfig
@@ -324,6 +376,11 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 		return containerMPI.Container, fmt.Errorf("application's compilation command is not defined")
 	}
 
+	err = containerMPI.Buildenv.Init(sysCfg)
+	if err != nil {
+		return containerMPI.Container, fmt.Errorf("failed to initialize build environment: %s", err)
+	}
+
 	// Install MPI on host
 	if !skipHostMPI {
 		log.Println("* Installing MPI on host...")
@@ -338,30 +395,20 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	log.Printf("-> Definition file: %s\n", containerMPI.Container.DefFile)
 	log.Printf("-> MPI implementation: %s\n", containerMPI.Implem.ID)
 	log.Printf("-> MPI implementation version: %s\n", containerMPI.Implem.Version)
-	log.Printf("-> MPI URL: %s\n", containerMPI.Container.URL)
+	log.Printf("-> MPI URL: %s\n", containerMPI.Implem.URL)
+	log.Printf("-> Scratch directory: %s\n", sysCfg.ScratchDir)
 	log.Printf("-> Build directory: %s\n", containerMPI.Container.BuildDir)
 	log.Printf("-> Install directory: %s\n", containerMPI.Container.InstallDir)
 	log.Printf("-> Container name: %s\n", containerMPI.Container.Name)
 	log.Printf("-> Container Linux distribution: %s\n", containerMPI.Container.Distro)
+	log.Printf("-> Container path: %s\n", containerMPI.Container.Path)
 	log.Printf("-> Container MPI model: %s\n", containerMPI.Container.Model)
-	log.Printf("-> Scratch directory: %s\n", sysCfg.ScratchDir)
 	log.Printf("-> Target container image: %s\n", containerMPI.Container.Path)
 
 	// Make sure the image already exists, if so, stop, we do not overwrite images, ever
 	if util.FileExists(containerMPI.Container.Path) {
 		fmt.Printf("%s already exists, stopping\n", containerMPI.Container.Path)
 		return containerMPI.Container, nil
-	}
-
-	// If the scratch dir exists, we delete it to start fresh
-	err = util.DirInit(sysCfg.ScratchDir)
-	if err != nil {
-		return containerMPI.Container, fmt.Errorf("failed to initialize %s: %s", sysCfg.ScratchDir, err)
-	}
-
-	err = util.DirInit(containerBuildEnv.BuildDir)
-	if err != nil {
-		return containerMPI.Container, fmt.Errorf("failed to initialize %s: %s", containerBuildEnv.BuildDir, err)
 	}
 
 	// Generate definition file

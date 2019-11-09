@@ -52,7 +52,6 @@ func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error
 	cmd.Stdout = &stdout
 	cmd.Run() // mconfig -h always returns 2 (no idea why, it just does)
 
-	fmt.Printf("Result from help: %s\n", stdout.String())
 	args := []string{"--prefix=" + env.InstallDir}
 	if strings.Contains(stdout.String(), "-p prefix") {
 		args = []string{"-p", env.InstallDir}
