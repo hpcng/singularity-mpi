@@ -569,3 +569,19 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 
 	return nil
 }
+
+// Backup a definition file based on a build environment (copy the file from the build directory
+// to the install directory)
+func (d *DefFileData) Backup(env *buildenv.Info) error {
+	defFileName := filepath.Base(d.Path)
+	backupFile := filepath.Join(env.InstallDir, defFileName)
+	if d.Path != backupFile {
+		log.Printf("-> Backing up %s to %s", d.Path, backupFile)
+		err := util.CopyFile(d.Path, backupFile)
+		if err != nil {
+			return fmt.Errorf("error while backing up %s to %s", d.Path, backupFile)
+		}
+	}
+
+	return nil
+}
