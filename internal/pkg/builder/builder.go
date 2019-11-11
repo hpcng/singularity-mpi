@@ -330,13 +330,9 @@ func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *b
 
 	// In debug mode, we save the def file that was generated to the scratch directory
 	if sysCfg.Debug {
-		backupFile := filepath.Join(sysCfg.ScratchDir, defFileName)
-		if f.Path != backupFile {
-			log.Printf("-> Backing up %s to %s", f.Path, backupFile)
-			err := util.CopyFile(f.Path, backupFile)
-			if err != nil {
-				log.Printf("-> error while backing up %s to %s", f.Path, backupFile)
-			}
+		err := f.Backup(env)
+		if err != nil {
+			log.Println("[WARN] Failed to backup definition file")
 		}
 	}
 

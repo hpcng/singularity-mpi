@@ -413,9 +413,15 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 
 	// Generate definition file
 	log.Println("* Generating definition file...")
-	_, err = generateMPIDeffile(&app, &containerMPI, sysCfg)
+	deffileData, err := generateMPIDeffile(&app, &containerMPI, sysCfg)
 	if err != nil {
 		return containerMPI.Container, fmt.Errorf("failed to generate definition file %s: %s", containerMPI.Container.DefFile, err)
+	}
+
+	// Backup the definition file when in debug mode
+	if sysCfg.Debug {
+		// We do not track failure while backing up definition file
+		deffileData.Backup(&containerBuildEnv)
 	}
 
 	// Create container
