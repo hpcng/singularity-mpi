@@ -143,8 +143,7 @@ func AddLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 	return nil
 }
 
-// AddBoostrap adds all the data to the definition file related to bootstrapping
-func AddBootstrap(f *os.File, deffile *DefFileData) error {
+func addDockerBootstrap(f *os.File, deffile *DefFileData) error {
 	_, err := f.WriteString("Bootstrap: docker\nFrom: " + deffile.Distro + "\n\n")
 	if err != nil {
 		return fmt.Errorf("failed to add bootstrap section to definition file: %s", err)
@@ -153,12 +152,77 @@ func AddBootstrap(f *os.File, deffile *DefFileData) error {
 	return nil
 }
 
+func addDebootstrapBootstrap(f *os.File, deffile *DefFileData) error {
+	distro := deffile.Distro
+	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the version
+	if strings.Contains(distro, ":") {
+		tokens := strings.Split(distro, ":")
+		distro = tokens[1]
+	}
+	// todo: do not hardcode the mirror URL
+	_, err := f.WriteString("Bootstrap: debootstrap\nOSVersion: " + distro + "\nMirrorURL: http://us.archive.ubuntu.com/ubuntu/\n\n")
+	if err != nil {
+		return fmt.Errorf("failed to add bootstrap section to definition file: %s", err)
+	}
+
+	return nil
+}
+
+func addDistroInit(f *os.File, distro string) error {
+	codename := distro
+	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the version
+	if strings.Contains(codename, ":") {
+		tokens := strings.Split(codename, ":")
+		codename = tokens[1]
+	}
+
+	_, err := f.WriteString("%post\n\tapt-get update && apt-get install -y wget git bash gcc gfortran g++ make file software-properties-common\n\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\tadd-apt-repository universe\n")
+	if err != nil {
+		return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
+	}
+	_, err = f.WriteString("\tadd-apt-repository multiverse\n")
+	if err != nil {
+		return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
+	}
+	_, err = f.WriteString("\tapt-get update\n\n")
+	if err != nil {
+		return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
+	}
+
+	return nil
+}
+
+// AddBoostrap adds all the data to the definition file related to bootstrapping
+func AddBootstrap(f *os.File, deffile *DefFileData) error {
+	return addDebootstrapBootstrap(f, deffile)
+}
+
 // AddMPIInstall adds all the data to the definition file related to the installation of MPI
 func AddMPIInstall(f *os.File, deffile *DefFileData) error {
+	_, err := f.WriteString("\texport MPI_VERSION=" + deffile.MpiImplm.Version + "\n\texport MPI_URL=\"" + deffile.MpiImplm.URL + "\"\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\texport MPI_DIR=/opt/" + deffile.InternalEnv.InstallDir + "\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = f.WriteString("\tmkdir -p /tmp/mpi\n\tmkdir -p /opt\n\n")
+	if err != nil {
+		return err
+	}
+
 	mpitarball := path.Base(deffile.MpiImplm.URL)
 	tarballFormat := util.DetectTarballFormat(mpitarball)
 	tarArgs := util.GetTarArgs(tarballFormat)
-	_, err := f.WriteString("\tcd /tmp/mpi && wget $MPI_URL && tar " + tarArgs + " " + mpitarball + "\n")
+	_, err = f.WriteString("\tcd /tmp/mpi && wget $MPI_URL && tar " + tarArgs + " " + mpitarball + "\n")
 	if err != nil {
 		return err
 	}
@@ -186,26 +250,6 @@ func AddMPIEnv(f *os.File, deffile *DefFileData) error {
 	}
 
 	_, err = f.WriteString("\texport MPI_DIR\n\texport SINGULARITY_MPI_DIR=$MPI_DIR\n\texport SINGULARITYENV_APPEND_PATH=$MPI_DIR/bin\n\texport SINGULARITYENV_APPEND_LD_LIBRARY_PATH=$MPI_DIR/lib\n\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("%post\n\tapt-get update && apt-get install -y wget git bash gcc gfortran g++ make file\n\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\texport MPI_VERSION=" + deffile.MpiImplm.Version + "\n\texport MPI_URL=\"" + deffile.MpiImplm.URL + "\"\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\texport MPI_DIR=/opt/" + deffile.InternalEnv.InstallDir + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\tmkdir -p /tmp/mpi\n\tmkdir -p /opt\n\n")
 	if err != nil {
 		return err
 	}
@@ -470,6 +514,11 @@ func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) e
 		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
 	}
 
+	err = addDistroInit(f, data.Distro)
+	if err != nil {
+		return fmt.Errorf("failed to add the code initializing the distro: %s", err)
+	}
+
 	err = addAppDownload(f, app, data)
 	if err != nil {
 		return fmt.Errorf("failed to add the section to download the app: %s", err)
@@ -553,6 +602,11 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 	err = AddMPIEnv(f, data)
 	if err != nil {
 		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
+	}
+
+	err = addDistroInit(f, data.Distro)
+	if err != nil {
+		return fmt.Errorf("failed to add the code initializing the distro: %s", err)
 	}
 
 	err = addDependencies(f, pkgs)
