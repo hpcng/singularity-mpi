@@ -17,7 +17,6 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
-	"github.com/sylabs/singularity/pkg/syfs"
 )
 
 // MPIToolConfig is the structure hosting the data from the tool's configuration file (~/.singularity/singularity-mpi.conf)
@@ -42,7 +41,7 @@ const (
 
 // GetPathToSyMPIConfigFile returns the path to the tool's configuration file
 func GetPathToSyMPIConfigFile() string {
-	return filepath.Join(syfs.ConfigDir(), "singularity-mpi.conf")
+	return filepath.Join(sys.GetSympiDir(), "singularity-mpi.conf")
 }
 
 func saveMPIConfigFile(path string, data []string) error {
@@ -83,7 +82,7 @@ func LoadMPIConfigFile() ([]kv.KV, error) {
 
 // CreateMPIConfigFile ensures that the configuration file of the tool is correctly created
 func CreateMPIConfigFile() (string, error) {
-	syDir := syfs.ConfigDir()
+	syDir := sys.GetSympiDir()
 	if !util.PathExists(syDir) {
 		return "", fmt.Errorf("%s does not exist. Is Singularity installed?", syDir)
 	}
