@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -82,9 +83,12 @@ func LoadMPIConfigFile() ([]kv.KV, error) {
 
 // CreateMPIConfigFile ensures that the configuration file of the tool is correctly created
 func CreateMPIConfigFile() (string, error) {
-	syDir := sys.GetSympiDir()
-	if !util.PathExists(syDir) {
-		return "", fmt.Errorf("%s does not exist. Is Singularity installed?", syDir)
+	syMPIDir := sys.GetSympiDir()
+	if !util.PathExists(syMPIDir) {
+		err := os.MkdirAll(syMPIDir, 0755)
+		if err != nil {
+			return "", fmt.Errorf("failed to create %s: %s", syMPIDir, err)
+		}
 	}
 
 	syMPIConfigFile := GetPathToSyMPIConfigFile()
