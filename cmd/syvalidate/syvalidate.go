@@ -136,7 +136,7 @@ func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfi
 		var err error
 
 		e.App = getAppData(sysCfg)
-		e.Container.Distro = "ubuntu:" + sys.DefaultUbuntuDistro
+		e.Container.Distro = sysCfg.TargetDistro
 
 		err = buildenv.CreateDefaultHostEnvCfg(&e.HostBuildEnv, &e.HostMPI, sysCfg)
 		if err != nil {
@@ -269,6 +269,7 @@ func main() {
 	debug := flag.Bool("d", false, "Enable debug mode")
 	nRun := flag.Int("n", 1, "Number of iterations")
 	persistent := flag.Bool("persistent-installs", false, "Keep the MPI installations on the host and the container images in the specified directory (instead of deleting everything once an experiment terminates). Default is '~/.sympi', set SYMPI_INSTALL_DIR to overwrite")
+	distro := flag.String("distro", "ubuntu:disco", "Identifier of the target Linux distribution for the containers (e.g., 'centos:6', 'ubuntu:disco')")
 
 	flag.Parse()
 
@@ -277,6 +278,7 @@ func main() {
 	sysCfg.NetPipe = *netpipe
 	sysCfg.IMB = *imb
 	sysCfg.Nrun = *nRun
+	sysCfg.TargetDistro = *distro
 	sysCfg.Verbose = *verbose
 	sysCfg.Debug = *debug
 	if *persistent {
@@ -348,12 +350,11 @@ func main() {
 
 	// Try to detect the local distro. If we cannot, it is not a big deal but we know that for example having
 	// different versions of Ubuntu in containers and host may lead to some libc problems
-	sysCfg.TargetUbuntuDistro = sys.DefaultUbuntuDistro // By default, containers will use a specific Ubuntu distro
-	distro, err := checker.CheckDistro()
+	hostDistro, err := checker.CheckDistro()
 	if err != nil {
 		log.Println("[INFO] Cannot detect the local distro")
-	} else if distro != "" {
-		sysCfg.TargetUbuntuDistro = distro
+	} else if hostDistro != "" {
+		sysCfg.HostDistro = hostDistro
 	}
 
 	err = testMPI(mpiImplem.ID, experiments, sysCfg, syConfig)

@@ -120,6 +120,7 @@ func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) 
 	deffileCfg.MpiImplm = &mpiCfg.Implem
 	deffileCfg.InternalEnv = &mpiCfg.Buildenv
 	deffileCfg.Model = mpiCfg.Container.Model
+	deffileCfg.Distro = sysCfg.TargetDistro
 
 	switch mpiCfg.Container.Model {
 	case container.HybridModel:

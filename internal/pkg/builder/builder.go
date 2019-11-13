@@ -293,28 +293,31 @@ func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *b
 	var f deffile.DefFileData
 	var err error
 
+	distro, _ := sys.ParseDistroID(sysCfg.TargetDistro)
+
 	// For IMPI, we generate the definition file from a template, for other MPI implementations,
 	// we create a definition file from scratch
 	if mpiCfg.ID == implem.IMPI {
-		defFileName = "ubuntu_intel.def"
+		defFileName = distro + "_intel.def"
 		if sysCfg.NetPipe {
-			defFileName = "ubuntu_intel_netpipe.def"
+			defFileName = distro + "_intel_netpipe.def"
 		}
 		if sysCfg.IMB {
-			defFileName = "ubuntu_intel_imb.def"
+			defFileName = distro + "_intel_imb.def"
 		}
 		f, err = b.createDefFileFromTemplate(defFileName, mpiCfg, env, container, sysCfg)
 		if err != nil {
 			return fmt.Errorf("failed to create definition file from template: %s", err)
 		}
 	} else {
-		defFileName = "ubuntu_" + mpiCfg.ID + "_" + appInfo.Name + ".def"
+		distroID := sys.GetDistroID(sysCfg.TargetDistro)
+		defFileName = distroID + "_" + mpiCfg.ID + "_" + appInfo.Name + ".def"
 		container.DefFile = filepath.Join(env.BuildDir, defFileName)
 		if container.AppExe == "" {
 			container.AppExe = appInfo.BinPath
 		}
 
-		f.Distro = DefaultUbuntuDistro
+		f.Distro = sysCfg.TargetDistro
 		f.InternalEnv = env
 		f.MpiImplm = mpiCfg
 		f.Path = container.DefFile

@@ -77,7 +77,7 @@ func AddLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
-	linuxDistro := "ubuntu" // todo: do not hardcode
+	linuxDistro, distroVersion := sys.ParseDistroID(deffile.Distro)
 
 	_, err := f.WriteString("%labels\n")
 	if err != nil {
@@ -89,7 +89,7 @@ func AddLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 		return err
 	}
 
-	_, err = f.WriteString("\tLinux_version " + deffile.Distro + "\n")
+	_, err = f.WriteString("\tLinux_version " + distroVersion + "\n")
 	if err != nil {
 		return err
 	}
@@ -152,6 +152,22 @@ func addDockerBootstrap(f *os.File, deffile *DefFileData) error {
 	return nil
 }
 
+func addYumBootstrap(f *os.File, deffile *DefFileData) error {
+	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the version
+	if !strings.Contains(deffile.Distro, ":") {
+		return fmt.Errorf("failed to parse distribution identifier %s", deffile.Distro)
+	}
+	tokens := strings.Split(deffile.Distro, ":")
+	version := tokens[1]
+
+	_, err := f.WriteString("Bootstrap: yum\nOSVersion: " + version + "\nMirrorURL: http://mirror.centos.org/centos-%{OSVERSION}/%{OSVERSION}/os/$basearch/\nInclude: yum\n\n")
+	if err != nil {
+		return fmt.Errorf("failed to add bootstrap section to definition file: %s", err)
+	}
+
+	return nil
+}
+
 func addDebootstrapBootstrap(f *os.File, deffile *DefFileData) error {
 	distro := deffile.Distro
 	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the version
@@ -174,24 +190,50 @@ func addDistroInit(f *os.File, distro string) error {
 	if strings.Contains(codename, ":") {
 		tokens := strings.Split(codename, ":")
 		codename = tokens[1]
+		distro = tokens[0]
 	}
 
-	_, err := f.WriteString("%post\n\tapt-get update && apt-get install -y wget git bash gcc gfortran g++ make file software-properties-common\n\n")
+	_, err := f.WriteString("%post\n")
 	if err != nil {
 		return err
 	}
 
-	_, err = f.WriteString("\tadd-apt-repository universe\n")
-	if err != nil {
-		return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
-	}
-	_, err = f.WriteString("\tadd-apt-repository multiverse\n")
-	if err != nil {
-		return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
-	}
-	_, err = f.WriteString("\tapt-get update\n\n")
-	if err != nil {
-		return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
+	switch distro {
+	case "ubuntu":
+		_, err := f.WriteString("\tapt-get update && apt-get install -y wget git bash gcc gfortran g++ make file software-properties-common\n\n")
+		if err != nil {
+			return err
+		}
+
+		_, err = f.WriteString("\tadd-apt-repository universe\n")
+		if err != nil {
+			return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
+		}
+		_, err = f.WriteString("\tadd-apt-repository multiverse\n")
+		if err != nil {
+			return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
+		}
+		_, err = f.WriteString("\tapt-get update\n\n")
+		if err != nil {
+			return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
+		}
+	case "centos":
+		_, err := f.WriteString("\trpm --rebuilddb\n")
+		if err != nil {
+			return err
+		}
+		_, err = f.WriteString("\tyum -y update\n")
+		if err != nil {
+			return err
+		}
+		_, err = f.WriteString("\tyum -y install wget tar bzip2 git make gcc gcc-c++ gcc-gfortran\n")
+		if err != nil {
+			return err
+		}
+		_, err = f.WriteString("\tyum clean all\n\n")
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -199,7 +241,18 @@ func addDistroInit(f *os.File, distro string) error {
 
 // AddBoostrap adds all the data to the definition file related to bootstrapping
 func AddBootstrap(f *os.File, deffile *DefFileData) error {
-	return addDebootstrapBootstrap(f, deffile)
+	tokens := strings.Split(deffile.Distro, ":")
+	if len(tokens) != 2 {
+		return fmt.Errorf("failed to extract distro name and version from %s", deffile.Distro)
+	}
+	switch tokens[0] {
+	case "ubuntu":
+		return addDebootstrapBootstrap(f, deffile)
+	case "centos":
+		return addYumBootstrap(f, deffile)
+	default:
+		return fmt.Errorf("unsupported distro: %s", deffile.Distro)
+	}
 }
 
 // AddMPIInstall adds all the data to the definition file related to the installation of MPI
