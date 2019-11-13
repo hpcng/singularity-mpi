@@ -6,8 +6,10 @@
 package sys
 
 import (
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -56,8 +58,11 @@ type Config struct {
 	// ConfigFile is the path to the configuration file describing experiments
 	ConfigFile string
 
-	// TargetUbuntuDistro is the version of Ubuntu that we will run in the containers
-	TargetUbuntuDistro string
+	// TargetDistro is the Linux distribution identifier that we will be used in the containers
+	TargetDistro string
+
+	// HostDistro is the Linux distribution on the host
+	HostDistro string
 
 	// BinPath is the path to the current binary
 	BinPath string
@@ -143,4 +148,27 @@ func GetSympiDir() string {
 	} else {
 		return filepath.Join(os.Getenv("HOME"), DefaultSympiInstallDir)
 	}
+}
+
+// ParseDistroID parses the string we use to identify a specific distro into a distribution name and its version
+func ParseDistroID(distro string) (string, string) {
+	if !strings.Contains(distro, ":") {
+		log.Printf("[WARN] %s an invalid distro ID\n", distro)
+		return "", ""
+	}
+
+	tokens := strings.Split(distro, ":")
+	if len(tokens) != 2 {
+		log.Printf("[WARN] %s an invalid distro ID\n", distro)
+		return "", ""
+	}
+
+	return tokens[0], tokens[1]
+}
+
+// GetDistroID returns a formatted version of the value of TargetDistro.
+//
+// This is mainly used to have a standard way to set directory and file names
+func GetDistroID(distro string) string {
+	return strings.Replace(distro, ":", "_", 1)
 }
