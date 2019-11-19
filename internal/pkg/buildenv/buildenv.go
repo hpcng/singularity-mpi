@@ -74,6 +74,12 @@ func (env *Info) Unpack() error {
 	}
 
 	// Figure out the extension of the tarball
+	if util.IsDir(env.SrcPath) {
+		// If we point to a directory, it is something like a Git checkout so nothing to do
+		log.Printf("%s does not seem to need to be unpacked, skipping...", env.SrcPath)
+		return nil
+	}
+
 	format := util.DetectTarballFormat(env.SrcPath)
 	if format == "" {
 		// A typical use case here is a single file that just needs to be compiled
@@ -145,6 +151,7 @@ func (env *Info) RunMake(priv bool, args []string, stage string) error {
 		makeCmd = exec.Command("make", args...)
 	} else {
 		sudoBin, err := exec.LookPath("sudo")
+		logMsg = sudoBin + " " + logMsg
 		if err != nil {
 			return fmt.Errorf("failed to find the sudo binary: %s", err)
 		}
@@ -189,6 +196,51 @@ func (env *Info) copyTarball(p *SoftwarePackage) error {
 	return nil
 }
 
+func (env *Info) gitCheckout(p *SoftwarePackage) error {
+	// todo: should it be cached in sysCfg and passed in?
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		return fmt.Errorf("failed to find git: %s", err)
+	}
+
+	repoName := filepath.Base(p.URL)
+	repoName = strings.Replace(repoName, ".git", "", 1)
+	checkoutPath := filepath.Join(env.BuildDir, repoName)
+
+	if util.PathExists(checkoutPath) {
+		gitCmd := exec.Command(gitBin, "pull")
+		log.Printf("Running from %s: %s pull\n", checkoutPath, gitBin)
+		gitCmd.Dir = checkoutPath
+		var stderr, stdout bytes.Buffer
+		gitCmd.Stderr = &stderr
+		gitCmd.Stdout = &stdout
+		err = gitCmd.Run()
+		if err != nil {
+			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+		}
+
+	} else {
+		gitCmd := exec.Command(gitBin, "clone", p.URL)
+		log.Printf("Running from %s: %s clone %s\n", env.BuildDir, gitBin, p.URL)
+		gitCmd.Dir = env.BuildDir
+		var stderr, stdout bytes.Buffer
+		gitCmd.Stderr = &stderr
+		gitCmd.Stdout = &stdout
+		err = gitCmd.Run()
+		if err != nil {
+			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+		}
+	}
+
+	// Both env.SrcPath and env.SrcDir are set to the directory checkout because:
+	// - the value of SrcPath will make the code figure out in a safe manner that it is not necessary to do unpack
+	// - the value of SrcDir will point to where the code is from configuration/compilation/installation
+	env.SrcPath = checkoutPath
+	env.SrcDir = checkoutPath
+
+	return nil
+}
+
 // Get is the function to get a given source code
 func (env *Info) Get(p *SoftwarePackage) error {
 	log.Printf("- Getting %s from %s...\n", p.Name, p.URL)
@@ -214,6 +266,11 @@ func (env *Info) Get(p *SoftwarePackage) error {
 		err := env.download(p)
 		if err != nil {
 			return fmt.Errorf("impossible to download %s: %s", p.Name, err)
+		}
+	case util.GitURL:
+		err := env.gitCheckout(p)
+		if err != nil {
+			return fmt.Errorf("impossible to get Git repository %s: %s", p.URL, err)
 		}
 	default:
 		return fmt.Errorf("impossible to detect URL type: %s", p.URL)

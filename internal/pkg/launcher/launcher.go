@@ -117,7 +117,7 @@ func Load() (sys.Config, jm.JM, network.Info, error) {
 	val := kv.GetValue(sympiKVs, sy.NoPrivKey)
 	cfg.Nopriv = false
 	nopriv, err := strconv.ParseBool(val)
-	if err != nil && val != "" && nopriv {
+	if nopriv {
 		cfg.Nopriv = true
 	}
 	val = kv.GetValue(sympiKVs, sy.SudoCmdsKey)

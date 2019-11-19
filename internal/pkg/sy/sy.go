@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 func updateEnviron(buildEnv *buildenv.Info) []string {
@@ -57,6 +59,25 @@ func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error
 		args = []string{"-p", env.InstallDir}
 	}
 
+	if sysCfg.Nopriv {
+		args = append(args, "--without-suid")
+	}
+
+	// At the point the install directory may not exist since it may be assumed it will
+	// be created during the install command. If it is not there, we create it now so we
+	// can store the manifest
+	if !util.PathExists(env.InstallDir) {
+		err := os.MkdirAll(env.InstallDir, 0755)
+		if err != nil {
+			return fmt.Errorf("failed to create %s: %s", env.InstallDir, err)
+		}
+	}
+	singularityManifestPath := filepath.Join(env.InstallDir, "install.MANIFEST")
+	err := manifest.Create(singularityManifestPath, args)
+	if err != nil {
+		return fmt.Errorf("failed to create installation manifest: %s", err)
+	}
+
 	// Run mconfig
 	log.Printf("-> Executing from %s: ./mconfig %s\n", env.SrcDir, strings.Join(args, " "))
 	newEnv := updateEnviron(env)
@@ -68,7 +89,7 @@ func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error
 	cmd.Env = newEnv
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to run mconfig: %s (stderr: %s; stdout: %s)", err, stderr.String(), stdout.String())
 	}
