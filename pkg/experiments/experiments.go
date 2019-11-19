@@ -202,17 +202,22 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	log.Println("-> Build container in", exp.ContainerBuildEnv.BuildDir)
 	log.Println("-> Target Linux distribution in container:", exp.Container.Distro)
 	log.Println("-> Storing container in", exp.ContainerBuildEnv.InstallDir)
+	log.Println("-> Container full path: ", exp.Container.Path)
 	log.Println("-> MPI implementation:", myContainerMPICfg.Implem.ID)
 	log.Println("-> MPI version:", myContainerMPICfg.Implem.Version)
 	log.Println("-> MPI URL:", myContainerMPICfg.Implem.URL)
 
 	// Pull or build the image
 	if syConfig.BuildPrivilege {
-		execRes = createNewContainer(&myContainerMPICfg, exp, sysCfg, syConfig)
-		if execRes.Err != nil {
-			execRes.Err = fmt.Errorf("failed to create container: %s", err)
-			expRes.Pass = false
-			return false, expRes, execRes
+		if !util.PathExists(exp.Container.Path) {
+			execRes = createNewContainer(&myContainerMPICfg, exp, sysCfg, syConfig)
+			if execRes.Err != nil {
+				execRes.Err = fmt.Errorf("failed to create container: %s", err)
+				expRes.Pass = false
+				return false, expRes, execRes
+			}
+		} else {
+			log.Printf("%s already exists, skipping build\n", exp.Container.Path)
 		}
 	} else {
 		err = container.PullContainerImage(&myContainerMPICfg.Container, &myContainerMPICfg.Implem, sysCfg, syConfig)
