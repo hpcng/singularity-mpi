@@ -10,110 +10,25 @@ This is not meant to create an exhaustive compatibility matrix but rather an ide
 
 # Preparation of the source code
 
-Before installing this tool, please make sure that Go and Singularity are both properly installed.
-Then, create the `$HOME/go/src/github.com/sylabs` directory: `mkdir -p $HOME/go/src/github.com/sylabs`.
-Finally, check-out the source code: `cd $HOME/go/src/github.com/sylabs && git clone https://github.com/sylabs/singularity-mpi.git`.
+Before installation, please make sure that your GOPATH environment variable is correctly set and that $GOPATH/bin is in your PATH. This is required because we currently install binaries in $GOPATH/bin.
+Then, simply clone the repository on your system: `cd <path> && git clone https://github.com/sylabs/singularity-mpi.git`, and run `make install`.
 
-# Preparation of the host system
+# Overview
 
-Two modes of operations are currently supported:
-- building the container images on the host, guaranteeing the latest version of the operating system used by the containers,
-- using pre-made images from our registry, in case images cannot be built on the host.
+The source code will lead to the creation of 3 different binaries:
+- sycontainerize: a tool to help you create containers for your favorite applications.
+- sympi: a tool to let you easily install various versions of Singularity, of MPI and manage/run some of your containers (especially when using sycontainerize).
+- syvalidate: a tool that aims at helping you create MPI compatibility matrices.
 
-## Using images from registry
+For more details about each of these tools, please refer to the associated documentation, i.e., respectively README.sycontainerizei.md, README.sympi.md and README.syvalidate.md.
 
-Import the key used to signed the images: singularity key pull C7A1FB785121CB91D0965FB1CC509D21C10CC11D
+All these tools can rely on a workspace to manage MPI installations, containers and various version of Singularity. 
 
-## Locally building images
+# Installation
 
-###sudo configuration
-
-The tool relies heavily on the `singularity` command line for the creation of images. That command is invoked with `sudo`, virtually requiring users to enter their password for every single experiment the tool is executing. When considering that the tool may run dozens of experiments over several hours, having to enter a password for every image creation is quickly cumbersome and potentially a source of unexpected failres. It is therefore strongly encouraged to setup `sudo` so that a password is not requested when executing `singularity` commands. To do so, update your `sudo` configuration as follow:
-
-Execute:
-```
-sudo visudo
-```
-
-Add a line at the end of your `sudo` configuration file (warning, if the line is not added at the end of the file, another rule may overwrite it) as follow, assuming that `singularity` is installed in `/usr/local`:
-```
-<userid>    ALL=(root)  NOPASSWD: /usr/local/bin/singularity
-```
-
-## Previously installed versions of MPI
-
-The Singularity-mpi tool ignores any version of MPI manually installed on the host prior to using this tool. 
-
-# Compilation
-
-To compile the tool, you just need to execute the following command from the top directory of the source code: `cd $HOME/go/src/github.com/sylabs/singularity-mpi && make install`.
+To compile the tool, you just need to execute the following command from the top directory of the source code: `cd <path>; make install`.
 This will generate three different binaries: `syvalidate`, `sycontainerize` and `sympi`.
 The `syvalidate` command can be used to run various experiments. Running the `syvalidate -h` command displays a help 
 message that describes different options you could use while running the tool.
 The `sycontainerize` command can be used to easily create a container for any application. Running the `sycontainerize -h` command displays a help message that describes how the command can be used.
 The `sympi` command can be used to easily manage various MPI installation on the host and easily execute containers using MPI. Running the `sympi -h` command displays a help message that describes how the command can be used.
-
-# Experiments
-
-The tool is based on the concept of *experiments*, which consist of running on specific test with specific versions of MPI on the host and in the container and result in PASS/FAIL data. The result file (e.g., ``openmpi-results.txt``) is composed of multiple lines, each line describing a specific experiment and its result.
-
-The tool achieves this by installing a specific version of MPI on the host and automatically creating a container image
-(currently based on Ubuntu) with a specific version of MPI that will run certain MPI programs within it to test the comptibility. 
-
-The version of a given MPI implementation to be used throughout an experiment is defined in a configuration file. For example, a 
-default configuration file for Open MPI is available in `etc/openmpi.conf` and a default configuration file for MPICH is available 
-in `etc/mpich.conf`. Users *must* specify the configuration file on the command line when running the tool (see examples). 
-
-Once the tool has completed, view the ``openmpi-results.txt``/``mpich-results.txt`` to view results of various combinations of the 
-versions and pick the host-container version combination most suitable to you.
-
-# Tests
-
-At the moment, we support two tests:
-- hello world: ensuring that basic short-lived wire-up and termination mechanisms are working correctly.
-- NetPipe: ensuring that point-to-point communications run correctly.
-
-# Examples
-
-## Run the tool with the default Open MPI versions and a simple helloworld test
-
-``./main -configfile `pwd`/etc/openmpi.conf``
-
-## Run the tool with the default Open MPI versions and Netpipe
-
-``./main -configfile `pwd`/etc/openmpi.conf -netpipe``
-
-## Run the tool with the default Open MPI versions and IMB
-
-``./main -configfile `pwd`/etc/openmpi.conf -imb``
-
-## Run the tool with the default MPICH versions and a simple helloworld test
-
-``./main -configfile `pwd`/etc/mpich.conf``
-
-## Run the tool with the default MPICH versions and Netpipe
-
-``./main -configfile `pwd`/etc/mpich.conf -netpipe``
-
-## Run the tool with the default MPICH versions and IMB
-
-``./main -configfile `pwd`/etc/mpich.conf -imb``
-
-## Run the tool with the default Intel MPI versions and a simple helloworld test
-
-``./main -configfile `pwd`/etc/intel.conf``
-
-## Run the tool with the default Intel MPI versions and Netpipe
-
-``./main -configfile `pwd`/etc/intel.conf -netpipe``
-
-## Run the tool with the default Intel MPI versions and collective operation test
-
-``./main -configfile `pwd`/etc/intel.conf -imb``
-
-These commands will run various MPI programs to test the compatibility between different versions:
-- a basic HelloWorld test,
-- NetPipe for points-to-point communications,
-- IMB for collective communications.
-
-However, more tests will be included over time.
