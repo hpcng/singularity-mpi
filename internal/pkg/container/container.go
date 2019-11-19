@@ -118,6 +118,9 @@ func Create(container *Config, sysCfg *sys.Config) error {
 	if sy.IsSudoCmd("build", sysCfg) {
 		log.Printf("-> Running %s %s %s %s %s\n", sysCfg.SudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
 		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
+	} else if sysCfg.Nopriv {
+		log.Printf("-> Running %s %s %s %s\n", sysCfg.SingularityBin, "build --fakeroot", container.Path, container.DefFile)
+		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "build", "--fakeroot", container.Path, container.DefFile)
 	} else {
 		log.Printf("-> Running %s %s %s %s\n", sysCfg.SingularityBin, "build", container.Path, container.DefFile)
 		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "build", container.Path, container.DefFile)

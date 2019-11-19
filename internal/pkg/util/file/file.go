@@ -52,6 +52,15 @@ func FileExists(path string) bool {
 	return !info.IsDir()
 }
 
+// IsDir checks whether a path is pointing at a directory or not
+func IsDir(name string) bool {
+	info, err := os.Stat(name)
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsDir()
+}
+
 // GetTarOpts returns the arguments to use with tar based on the format of the tarball
 func GetTarArgs(format string) string {
 	switch format {

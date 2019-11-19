@@ -168,7 +168,7 @@ func (b *Builder) InstallOnHost(pkg *implem.Info, env *buildenv.Info, sysCfg *sy
 
 	res.Err = env.Unpack()
 	if res.Err != nil {
-		res.Err = fmt.Errorf("failed to unpack MPI: %s", res.Err)
+		res.Err = fmt.Errorf("failed to unpack %s: %s", pkg.ID, res.Err)
 		return res
 	}
 

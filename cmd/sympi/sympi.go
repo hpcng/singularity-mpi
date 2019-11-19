@@ -65,21 +65,34 @@ func getContainerInstalls(entries []os.FileInfo) ([]string, error) {
 	return containers, nil
 }
 
-func getSingularityInstalls(entries []os.FileInfo) ([]string, error) {
+func getSingularityInstalls(basedir string, entries []os.FileInfo) ([]string, error) {
 	var singularities []string
+
 	for _, entry := range entries {
 		matched, err := regexp.MatchString(sys.SingularityInstallDirPrefix+`.*`, entry.Name())
 		if err != nil {
 			return singularities, fmt.Errorf("failed to parse %s: %s", entry, err)
 		}
 		if matched {
-			singularities = append(singularities, strings.Replace(entry.Name(), sys.SingularityInstallDirPrefix, "", -1))
+			// Now we check if we have an install manifest for more information
+			installManifest := filepath.Join(basedir, entry.Name(), "install.MANIFEST")
+			availVersion := strings.Replace(entry.Name(), sys.SingularityInstallDirPrefix, "", -1)
+			if util.PathExists(installManifest) {
+				data, err := ioutil.ReadFile(installManifest)
+				// Errors are not fatal, it means we just do not extract more information
+				if err == nil {
+					if strings.Contains(string(data), "--without-suid") {
+						availVersion = availVersion + " [no-suid]"
+					}
+				}
+			}
+			singularities = append(singularities, availVersion)
 		}
 	}
 	return singularities, nil
 }
 
-func displayInstalled(dir string) error {
+func displayInstalled(dir string, filter string) error {
 
 	entries, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -89,50 +102,56 @@ func displayInstalled(dir string) error {
 	curMPIVersion := getLoadedMPI()
 	curSingularityVersion := getLoadedSingularity()
 
-	hostInstalls, err := getHostMPIInstalls(entries)
-	if err != nil {
-		return fmt.Errorf("unable to get the install of MPIs installed on the host: %s", err)
-	}
-	containers, err := getContainerInstalls(entries)
-	if err != nil {
-		return fmt.Errorf("unable to get the list of containers stored on the host: %s", err)
-	}
-	singularities, err := getSingularityInstalls(entries)
-	if err != nil {
-		return fmt.Errorf("unable to get the list of singularity installs on the host: %s", err)
-	}
-
-	if len(singularities) > 0 {
-		fmt.Printf("Available Singularity installation(s) on the host:\n")
-		for _, sy := range singularities {
-			if sy == curSingularityVersion {
-				sy = sy + " (L)"
-			}
-			fmt.Printf("\tsingularity:%s\n", sy)
+	if filter == "all" || filter == "singularity" {
+		singularities, err := getSingularityInstalls(dir, entries)
+		if err != nil {
+			return fmt.Errorf("unable to get the list of singularity installs on the host: %s", err)
 		}
-		fmt.Printf("\n")
-	} else {
-		fmt.Printf("No Singularity available on the host\n\n")
-	}
-
-	if len(hostInstalls) > 0 {
-		fmt.Printf("Available MPI installation(s) on the host:\n")
-		for _, mpi := range hostInstalls {
-			if mpi == curMPIVersion {
-				mpi = mpi + " (L)"
+		if len(singularities) > 0 {
+			fmt.Printf("Available Singularity installation(s) on the host:\n")
+			for _, sy := range singularities {
+				if strings.Contains(sy, curSingularityVersion) {
+					sy = sy + " (L)"
+				}
+				fmt.Printf("\tsingularity:%s\n", sy)
 			}
-			fmt.Printf("\t%s\n", mpi)
+			fmt.Printf("\n")
+		} else {
+			fmt.Printf("No Singularity available on the host\n\n")
 		}
-		fmt.Printf("\n")
-	} else {
-		fmt.Printf("No MPI available on the host\n\n")
 	}
 
-	if len(containers) > 0 {
-		fmt.Printf("Available container(s):\n\t")
-		fmt.Println(strings.Join(containers, "\n\t"))
-	} else {
-		fmt.Printf("No container available\n\n")
+	if filter == "all" || filter == "mpi" {
+		hostInstalls, err := getHostMPIInstalls(entries)
+		if err != nil {
+			return fmt.Errorf("unable to get the install of MPIs installed on the host: %s", err)
+		}
+		if len(hostInstalls) > 0 {
+			fmt.Printf("Available MPI installation(s) on the host:\n")
+			for _, mpi := range hostInstalls {
+				if mpi == curMPIVersion {
+					mpi = mpi + " (L)"
+				}
+				fmt.Printf("\t%s\n", mpi)
+			}
+			fmt.Printf("\n")
+		} else {
+			fmt.Printf("No MPI available on the host\n\n")
+		}
+	}
+
+	if filter == "all" || strings.Contains(filter, "container") {
+		containers, err := getContainerInstalls(entries)
+		if err != nil {
+			return fmt.Errorf("unable to get the list of containers stored on the host: %s", err)
+		}
+
+		if len(containers) > 0 {
+			fmt.Printf("Available container(s):\n\t")
+			fmt.Println(strings.Join(containers, "\n\t"))
+		} else {
+			fmt.Printf("No container available\n\n")
+		}
 	}
 
 	return nil
@@ -666,7 +685,7 @@ func listAvail(sysCfg *sys.Config) error {
 func main() {
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	debug := flag.Bool("d", false, "Enable debug mode")
-	list := flag.Bool("list", false, "List all MPI on the host and all MPI containers")
+	list := flag.Bool("list", false, "List all MPIs and Singularity versions on the host, and all MPI containers. 'singularity', 'mpi' and 'container' can be used as filters.")
 	load := flag.String("load", "", "The version of MPI/Singularity installed on the host to load")
 	unload := flag.String("unload", "", "Unload current version of MPI/Singularity that is used, e.g., sympi -unload [mpi|singularity]")
 	install := flag.String("install", "", "MPI implementation to install, e.g., openmpi:4.0.2")
@@ -707,7 +726,11 @@ func main() {
 	sympiDir := sys.GetSympiDir()
 
 	if *list {
-		displayInstalled(sympiDir)
+		filter := "all"
+		if len(os.Args) >= 3 {
+			filter = os.Args[2]
+		}
+		displayInstalled(sympiDir, filter)
 	}
 
 	if *load != "" {
