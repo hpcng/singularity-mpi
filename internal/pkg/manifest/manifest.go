@@ -11,6 +11,7 @@ import (
 	"strings"
 )
 
+// Create a new manifest
 func Create(filepath string, entries []string) error {
 	f, err := os.Create(filepath)
 	if err != nil {
