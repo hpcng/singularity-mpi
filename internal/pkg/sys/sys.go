@@ -112,10 +112,10 @@ type Config struct {
 	// AppContainizer is the path to the configuration for automatic containerization of app
 	AppContainizer string
 
-	// Registry is the optinal user registery where images can be uploaded
+	// Registry is the optinal user registry where images can be uploaded
 	Registry string
 
-	// Upload specifies whether images needs to be uploaded to the registery
+	// Upload specifies whether images needs to be uploaded to the registry
 	Upload bool
 
 	// Persistent specifies whether we need to keep the installed software (MPI and containers)

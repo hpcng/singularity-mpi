@@ -354,7 +354,7 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 
 	// Load some generic data
 	curTime := time.Now()
-	url := kv.GetValue(kvs, "registery")
+	url := kv.GetValue(kvs, "registry")
 	if string(url[len(url)-1]) != "/" {
 		url = url + "/"
 	}
