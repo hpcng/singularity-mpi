@@ -240,7 +240,7 @@ func addDistroInit(f *os.File, distro string) error {
 }
 
 // AddBoostrap adds all the data to the definition file related to bootstrapping
-func AddBootstrap(f *os.File, deffile *DefFileData) error {
+func AddBootstrap(f *os.File, deffile *DefFileData, sysCfg *sys.Config) error {
 	tokens := strings.Split(deffile.Distro, ":")
 	if len(tokens) != 2 {
 		return fmt.Errorf("failed to extract distro name and version from %s", deffile.Distro)
@@ -249,7 +249,11 @@ func AddBootstrap(f *os.File, deffile *DefFileData) error {
 	case "ubuntu":
 		return addDebootstrapBootstrap(f, deffile)
 	case "centos":
-		return addYumBootstrap(f, deffile)
+		if !sysCfg.Nopriv {
+			return addYumBootstrap(f, deffile)
+		} else {
+			return addDockerBootstrap(f, deffile)
+		}
 	default:
 		return fmt.Errorf("unsupported distro: %s", deffile.Distro)
 	}
@@ -545,7 +549,7 @@ func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) e
 		return fmt.Errorf("failed to create %s: %s", data.Path, err)
 	}
 
-	err = AddBootstrap(f, data)
+	err = AddBootstrap(f, data, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create the bootstrap section of the definition file: %s", err)
 	}
@@ -636,7 +640,7 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 	pkgs = append(pkgs, "infiniband-diags")
 	pkgs = append(pkgs, "ibverbs-utils")
 
-	err = AddBootstrap(f, data)
+	err = AddBootstrap(f, data, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create the bootstrap section of the definition file: %s", err)
 	}
