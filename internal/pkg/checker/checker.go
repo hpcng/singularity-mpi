@@ -22,7 +22,7 @@ import (
 
 const (
 	cmdTimeout     = 10
-	prereqBinaries = "wget gfortran gcc g++ make file mksquashfs bzip2 newuidmap"
+	prereqBinaries = "wget gfortran gcc g++ make file mksquashfs bzip2 newuidmap tar"
 )
 
 // CheckDefFile does some checking on a definition file to ensure it can be used
