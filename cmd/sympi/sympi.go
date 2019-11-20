@@ -712,7 +712,7 @@ func main() {
 	list := flag.Bool("list", false, "List all MPIs and Singularity versions on the host, and all MPI containers. 'singularity', 'mpi' and 'container' can be used as filters.")
 	load := flag.String("load", "", "The version of MPI/Singularity installed on the host to load")
 	unload := flag.String("unload", "", "Unload current version of MPI/Singularity that is used, e.g., sympi -unload [mpi|singularity]")
-	install := flag.String("install", "", "MPI implementation to install, e.g., openmpi:4.0.2")
+	install := flag.String("install", "", "MPI/Singularity to install, e.g., openmpi:4.0.2 or singularity:master; for Singularity, the option -no-suid can also be used.")
 	nosetuid := flag.Bool("no-suid", false, "When and only when installing Singularity, you may use the -no-suid flag to ensure a full userspace installation")
 	uninstall := flag.String("uninstall", "", "MPI implementation to uninstall, e.g., openmpi:4.0.2")
 	run := flag.String("run", "", "Run a container")
