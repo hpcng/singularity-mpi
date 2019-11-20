@@ -181,6 +181,8 @@ func getSingularityConfigFilePath(sysCfg *sys.Config) string {
 	return filepath.Join(sysCfg.EtcDir, "singularity.conf")
 }
 
+// LoadSingularityReleaseConf loads from the configuration file the list of supported
+// Singularity releases that are supported
 func LoadSingularityReleaseConf(sysCfg *sys.Config) ([]kv.KV, error) {
 	file := getSingularityConfigFilePath(sysCfg)
 	kvs, err := kv.LoadKeyValueConfig(file)
@@ -265,6 +267,8 @@ func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error
 	return nil
 }
 
+// LookupConfig looks up the configuration of an installation of Singularity (when possible).
+// This is done using the install.MANIFEST created when using SyMPI.
 func LookupConfig(sysCfg *sys.Config) (sys.Config, error) {
 	var s sys.Config
 	s = *sysCfg
