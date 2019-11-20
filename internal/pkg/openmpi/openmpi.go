@@ -14,8 +14,8 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/network"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 )
 
 const (

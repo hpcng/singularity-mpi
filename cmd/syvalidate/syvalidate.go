@@ -24,10 +24,10 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
-	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
 )
 

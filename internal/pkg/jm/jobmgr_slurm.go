@@ -19,10 +19,10 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/slurm"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 )
 
 // LoadSlurm is the function used by our job management framework to figure out if Slurm can be used and
