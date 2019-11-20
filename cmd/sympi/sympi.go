@@ -717,13 +717,14 @@ func main() {
 	uninstall := flag.String("uninstall", "", "MPI implementation to uninstall, e.g., openmpi:4.0.2")
 	run := flag.String("run", "", "Run a container")
 	avail := flag.Bool("avail", false, "List all available versions of MPI implementations and Singularity that can be installed on the host")
+	config := flag.Bool("config", false, "Check and configure the system for SyMPI")
 
 	flag.Parse()
 
 	// Initialize the log file. Log messages will both appear on stdout and the log file if the verbose option is used
 	logFile := util.OpenLogFile("sympi")
 	defer logFile.Close()
-	if *verbose || *debug {
+	if *verbose || *debug || *config {
 		nultiWriters := io.MultiWriter(os.Stdout, logFile)
 		log.SetOutput(nultiWriters)
 	} else {
@@ -734,11 +735,37 @@ func main() {
 	sysCfg.Verbose = *verbose
 	sysCfg.Debug = *debug
 	// Save the options passed in through the command flags
-	if sysCfg.Debug {
+	if sysCfg.Debug || *config {
 		sysCfg.Verbose = true
 		err := checker.CheckSystemConfig()
 		if err != nil && err != sympierr.ErrSingularityNotInstalled {
-			log.Fatalf("the system is not correctly setup: %s", err)
+			fmt.Printf("\nThe system is not correctly setup.\nOn Debian based systems, the following commands can ensure that all required packages are install:\n" +
+				"\tsudo apt -y install build-essential \\ \n" +
+				"\t\tlibssl-dev \\ \n" +
+				"\t\tuuid-dev \\ \n" +
+				"\t\tlibgpgme11-dev \\ \n" +
+				"\t\tsquashfs-tools \\ \n" +
+				"\t\tlibseccomp-dev \\ \n" +
+				"\t\twget \\ \n" +
+				"\t\tpkg-config \\ \n" +
+				"\t\tgit \\ \n" +
+				"\t\tcryptsetup \\ \n" +
+				"\t\ttar bzip2 \\ \n" +
+				"\t\tgcc gfortran g++ make \\ \n" +
+				"\t\tsquashfs-tools \\ \n" +
+				"\t\tuidmap\n" +
+				"On RPM based systems:\n" +
+				"\tyum groupinstall -y 'Development Tools' && \\ \n" +
+				"\t\tsudo yum install -y openssl-devel \\ \n" +
+				"\t\tlibuuid-devel \\ \n" +
+				"\t\tlibseccomp-devel \\ \n" +
+				"\t\twget \\ \n" +
+				"\t\tsquashfs-tools \\ \n" +
+				"\t\tcryptsetup shadow-utils \\ \n" +
+				"\t\tgcc gcc-gfortran gcc-c++ make \\ \n")
+			fmt.Printf("On RPM system, you may also want to run the following commands as root to enable fakeroot:\n\tgrubby --args=\"user_namespace.enable=1\" --update-kernel=\"$(grubby --default-kernel)\" \\ \n" +
+				"\tsudo echo \"user.max_user_namespaces=15000\" >> /etc/sysctl.conf\n")
+			log.Fatalf("System not setup properly: %s", err)
 		}
 	}
 
@@ -749,6 +776,10 @@ func main() {
 	}
 
 	sympiDir := sys.GetSympiDir()
+
+	if *config {
+		os.Exit(0)
+	}
 
 	if *list {
 		filter := "all"
