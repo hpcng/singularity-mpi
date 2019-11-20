@@ -120,7 +120,7 @@ func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) 
 	deffileCfg.MpiImplm = &mpiCfg.Implem
 	deffileCfg.InternalEnv = &mpiCfg.Buildenv
 	deffileCfg.Model = mpiCfg.Container.Model
-	deffileCfg.Distro = sysCfg.TargetDistro
+	deffileCfg.Distro = mpiCfg.Container.Distro
 
 	switch mpiCfg.Container.Model {
 	case container.HybridModel:
@@ -355,7 +355,7 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	// Load some generic data
 	curTime := time.Now()
 	url := kv.GetValue(kvs, "registry")
-	if string(url[len(url)-1]) != "/" {
+	if url != "" && string(url[len(url)-1]) != "/" {
 		url = url + "/"
 	}
 	sysCfg.Registry = url + kv.GetValue(kvs, "app_name") + ":" + curTime.Format("20060102")

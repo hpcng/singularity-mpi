@@ -28,10 +28,10 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
-	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 )
 
 func getHostMPIInstalls(entries []os.FileInfo) ([]string, error) {
@@ -597,8 +597,30 @@ func runContainer(containerDesc string, sysCfg *sys.Config) error {
 	return nil
 }
 
-func installSingularity(id string, sysCfg *sys.Config) error {
-	kvs, err := sy.LoadSingularityReleaseConf(sysCfg)
+func parseSingularityInstallParams(params []string, sysCfg *sys.Config) error {
+	for _, p := range params {
+		switch p {
+		case "no-suid":
+			sysCfg.Nopriv = true
+			sysCfg.SudoSyCmds = []string{}
+		}
+	}
+
+	return nil
+}
+
+func installSingularity(id string, params []string, sysCfg *sys.Config) error {
+	// We create a new sysCfg structure just for this command since we may have passed
+	// installation parameters that will change the behavior extracted from the configuration
+	// file.
+	var mySysCfg sys.Config
+	mySysCfg = *sysCfg
+	err := parseSingularityInstallParams(params, &mySysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to parse Singularity installation parameters: %s", err)
+	}
+
+	kvs, err := sy.LoadSingularityReleaseConf(&mySysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to load data about Singularity releases: %s", err)
 	}
@@ -617,7 +639,9 @@ func installSingularity(id string, sysCfg *sys.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to load a builder: %s", err)
 	}
-	b.PrivInstall = true
+	if !mySysCfg.Nopriv {
+		b.PrivInstall = true
+	}
 
 	var buildEnv buildenv.Info
 	buildEnv.InstallDir = filepath.Join(sys.GetSympiDir(), sys.SingularityInstallDirPrefix+sy.Version)
@@ -640,7 +664,7 @@ func installSingularity(id string, sysCfg *sys.Config) error {
 	}
 	defer os.RemoveAll(buildEnv.BuildDir)
 
-	execRes := b.InstallOnHost(&sy, &buildEnv, sysCfg)
+	execRes := b.InstallOnHost(&sy, &buildEnv, &mySysCfg)
 	if execRes.Err != nil {
 		return fmt.Errorf("failed to install %s: %s", id, execRes.Err)
 	}
@@ -689,6 +713,7 @@ func main() {
 	load := flag.String("load", "", "The version of MPI/Singularity installed on the host to load")
 	unload := flag.String("unload", "", "Unload current version of MPI/Singularity that is used, e.g., sympi -unload [mpi|singularity]")
 	install := flag.String("install", "", "MPI implementation to install, e.g., openmpi:4.0.2")
+	nosetuid := flag.Bool("no-suid", false, "When and only when installing Singularity, you may use the -no-suid flag to ensure a full userspace installation")
 	uninstall := flag.String("uninstall", "", "MPI implementation to uninstall, e.g., openmpi:4.0.2")
 	run := flag.String("run", "", "Run a container")
 	avail := flag.Bool("avail", false, "List all available versions of MPI implementations and Singularity that can be installed on the host")
@@ -769,7 +794,12 @@ func main() {
 		re := regexp.MustCompile("^singularity")
 
 		if re.Match([]byte(*install)) {
-			err := installSingularity(*install, &sysCfg)
+			// It is possible to pass parameters in when installing Singularity
+			var singularityParameters []string
+			if *nosetuid {
+				singularityParameters = append(singularityParameters, "no-suid")
+			}
+			err := installSingularity(*install, singularityParameters, &sysCfg)
 			if err != nil {
 				log.Fatalf("failed to install Singularity %s: %s", *install, err)
 			}
@@ -784,7 +814,7 @@ func main() {
 	if *uninstall != "" {
 		err := uninstallMPIfromHost(*uninstall, &sysCfg)
 		if err != nil {
-			log.Fatalf("impossible to uninstall %s: %s", *install, err)
+			log.Fatalf("impossible to uninstall %s: %s", *uninstall, err)
 		}
 	}
 

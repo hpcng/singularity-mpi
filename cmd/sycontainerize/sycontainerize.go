@@ -16,9 +16,9 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
-	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 	"github.com/sylabs/singularity-mpi/pkg/containizer"
 )
 
@@ -65,6 +65,14 @@ func main() {
 	sysCfg.Debug = *debug
 	if !*noinstall {
 		sysCfg.Persistent = sys.GetSympiDir()
+	}
+
+	// Check if we can figure out any detail about the installation of Singularity
+	// that may change the way we use Singularity. For instance, do we need to use
+	// sudo or fakeroot to create an image?
+	sysCfg, err = sy.LookupConfig(&sysCfg)
+	if err != nil {
+		log.Fatalf("failed to get the Singularity configuration: %s", err)
 	}
 
 	// Make sure the tool's configuration file is set and load its data

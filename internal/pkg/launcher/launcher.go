@@ -28,10 +28,10 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/network"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
 	"github.com/sylabs/singularity-mpi/internal/pkg/slurm"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
-	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 )
 
 // Info gathers all the details to start a job

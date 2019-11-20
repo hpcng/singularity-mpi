@@ -19,9 +19,9 @@ import (
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
-	"github.com/sylabs/singularity-mpi/internal/pkg/util/sy"
 )
 
 const (
@@ -120,7 +120,7 @@ func Create(container *Config, sysCfg *sys.Config) error {
 		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
 	} else if sysCfg.Nopriv {
 		log.Printf("-> Running %s %s %s %s\n", sysCfg.SingularityBin, "build --fakeroot", container.Path, container.DefFile)
-		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "build", "--fakeroot", container.Path, container.DefFile)
+		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "build", "--fakeroot", container.Path, container.DefFile)
 	} else {
 		log.Printf("-> Running %s %s %s %s\n", sysCfg.SingularityBin, "build", container.Path, container.DefFile)
 		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
