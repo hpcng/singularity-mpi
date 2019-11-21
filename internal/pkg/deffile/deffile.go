@@ -184,7 +184,7 @@ func addDebootstrapBootstrap(f *os.File, deffile *DefFileData) error {
 	return nil
 }
 
-func addDistroInit(f *os.File, distro string) error {
+func addDistroInit(f *os.File, distro string, sysCfg *sys.Config) error {
 	codename := distro
 	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the version
 	if strings.Contains(codename, ":") {
@@ -218,9 +218,12 @@ func addDistroInit(f *os.File, distro string) error {
 			return fmt.Errorf("failed to add ubuntu initialization code to definition file: %s", err)
 		}
 	case "centos":
-		_, err := f.WriteString("\trpm --rebuilddb\n")
-		if err != nil {
-			return err
+		// We use yum only if we are not in the fakeroot case, i.e., nopriv case
+		if !sysCfg.Nopriv {
+			_, err := f.WriteString("\trpm --rebuilddb\n")
+			if err != nil {
+				return err
+			}
 		}
 		_, err = f.WriteString("\tyum -y update\n")
 		if err != nil {
@@ -382,20 +385,20 @@ func createFilesSection(f *os.File, app *app.Info, data *DefFileData, sysCfg *sy
 		if err != nil {
 			return fmt.Errorf("failed to write to definition file: %s", err)
 		}
-	}
+	} else {
+		// If the application is a file that we compiled, we copy it into the container
+		if util.DetectTarballFormat(app.Source) == util.UnknownFormat {
+			// This means this is most certainly a file
+			_, err := f.WriteString("%files\n")
+			if err != nil {
+				return fmt.Errorf("failed to write to definition file: %s", err)
+			}
 
-	// If the application is a file that we compiled, we copy it into the container
-	if util.DetectTarballFormat(app.Source) == util.UnknownFormat {
-		// This means this is most certainly a file
-		_, err := f.WriteString("%files\n")
-		if err != nil {
-			return fmt.Errorf("failed to write to definition file: %s", err)
-		}
-
-		src := strings.Replace(app.Source, "file://", "", 1)
-		_, err = f.WriteString("\t" + src + " /opt\n\n")
-		if err != nil {
-			return fmt.Errorf("failed to write to definition file: %s", err)
+			src := strings.Replace(app.Source, "file://", "", 1)
+			_, err = f.WriteString("\t" + src + " /opt\n\n")
+			if err != nil {
+				return fmt.Errorf("failed to write to definition file: %s", err)
+			}
 		}
 	}
 
@@ -505,15 +508,16 @@ func addAppDownload(f *os.File, app *app.Info, data *DefFileData) error {
 	return nil
 }
 
-func addDependencies(f *os.File, list []string) error {
-	// todo: do not assume debian
-	_, err := f.WriteString("\tapt install -y " + strings.Join(list, " ") + "\n")
-	if err != nil {
-		return fmt.Errorf("failed to add cleanup section: %s", err)
+func addDebianDependencies(f *os.File, list []string) error {
+	if len(list) > 0 {
+		_, err := f.WriteString("\tapt install -y " + strings.Join(list, " ") + "\n")
+		if err != nil {
+			return fmt.Errorf("failed to section to install dependencies: %s", err)
+		}
 	}
 
 	// todo: find a better way to deal with symlinks that are necessary for cross-distro compatility
-	_, err = f.WriteString("\tln -s /usr/lib/x86_64-linux-gnu/libosmcomp.so /usr/lib/x86_64-linux-gnu/libosmcomp.so.3\n")
+	_, err := f.WriteString("\tln -s /usr/lib/x86_64-linux-gnu/libosmcomp.so /usr/lib/x86_64-linux-gnu/libosmcomp.so.3\n")
 	if err != nil {
 		return fmt.Errorf("failed to add cleanup section: %s", err)
 	}
@@ -526,11 +530,51 @@ func addDependencies(f *os.File, list []string) error {
 	return nil
 }
 
-func addCleanUp(f *os.File) error {
-	// todo: do not assume debian
-	_, err := f.WriteString("\tapt-get clean\n")
-	if err != nil {
-		return fmt.Errorf("failed to add cleanup section: %s", err)
+func addRPMDependencies(f *os.File, list []string) error {
+	if len(list) > 0 {
+		_, err := f.WriteString("\tyum install -y " + strings.Join(list, " ") + "\n")
+		if err != nil {
+			return fmt.Errorf("failed to section to install dependencies: %s", err)
+		}
+	}
+
+	return nil
+}
+
+func addDependencies(f *os.File, distroID string, list []string) error {
+	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the distro name
+	if strings.Contains(distroID, ":") {
+		tokens := strings.Split(distroID, ":")
+		distroID = tokens[1]
+	}
+
+	switch distroID {
+	case "centos":
+		return addRPMDependencies(f, list)
+	case "ubuntu":
+		return addDebianDependencies(f, list)
+	}
+	return nil
+}
+
+func addCleanUp(f *os.File, distroID string) error {
+	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the distro name
+	if strings.Contains(distroID, ":") {
+		tokens := strings.Split(distroID, ":")
+		distroID = tokens[1]
+	}
+
+	switch distroID {
+	case "centos":
+		_, err := f.WriteString("\tapt-get clean\n")
+		if err != nil {
+			return fmt.Errorf("failed to add cleanup section: %s", err)
+		}
+	case "ubuntu":
+		_, err := f.WriteString("\tyum clean all\n")
+		if err != nil {
+			return fmt.Errorf("failed to add cleanup section: %s", err)
+		}
 	}
 
 	return nil
@@ -571,7 +615,7 @@ func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) e
 		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
 	}
 
-	err = addDistroInit(f, data.Distro)
+	err = addDistroInit(f, data.Distro, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to add the code initializing the distro: %s", err)
 	}
@@ -661,17 +705,17 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
 	}
 
-	err = addDistroInit(f, data.Distro)
+	err = addDistroInit(f, data.Distro, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to add the code initializing the distro: %s", err)
 	}
 
-	err = addDependencies(f, pkgs)
+	err = addDependencies(f, data.Distro, pkgs)
 	if err != nil {
 		return fmt.Errorf("failed to add package dependencies to the definition file: %s", err)
 	}
 
-	err = addCleanUp(f)
+	err = addCleanUp(f, data.Distro)
 	if err != nil {
 		return fmt.Errorf("failed to add code to clean up: %s", err)
 	}
