@@ -29,5 +29,5 @@ jobs:
         mkdir -p $GOPATH
         make test
       env:
-        GOPATH: $HOME/go
+        GOPATH: /github/home/go
 
