@@ -162,7 +162,6 @@ func GetImageURL(mpiCfg *implem.Info, sysCfg *sys.Config) string {
 	log.Printf("* Getting image URL for %s from %s...", mpiCfg.ID+"-"+mpiCfg.Version, registryConfigFile)
 	kvs, err := kv.LoadKeyValueConfig(registryConfigFile)
 	if err != nil {
-		fmt.Println("Cannot parse", registryConfigFile)
 		return ""
 	}
 	return kv.GetValue(kvs, mpiCfg.Version)
@@ -287,7 +286,6 @@ func LookupConfig(sysCfg *sys.Config) (sys.Config, error) {
 	manifest := filepath.Join(dir, "install.MANIFEST")
 
 	// Check if we have a install manifest in that directory
-	fmt.Printf("Checking: %s\n", manifest)
 	if util.FileExists(manifest) {
 		data, err := ioutil.ReadFile(manifest)
 		// Errors are not fatal, it means we just do not extract more information
