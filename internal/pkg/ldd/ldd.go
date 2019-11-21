@@ -66,6 +66,11 @@ func Detect() (Module, error) {
 		return mod, nil
 	}
 
+	loaded, mod = RPMLoad()
+	if loaded {
+		return mod, nil
+	}
+
 	var dummyModule Module
 	return dummyModule, fmt.Errorf("unable to find usable ldd module")
 }
