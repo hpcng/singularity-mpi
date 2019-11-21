@@ -19,7 +19,7 @@ install: all
 	@cp -f cmd/sympi/sympi_init ${GOPATH}/bin
 
 test:
-	go test -v ./...
+	go test ./...
 
 uninstall:
 	@rm -f $(GOPATH)/bin/sympi \
