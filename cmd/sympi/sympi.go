@@ -706,6 +706,33 @@ func listAvail(sysCfg *sys.Config) error {
 	return nil
 }
 
+func importContainerImg(imgPath string, sysCfg *sys.Config) error {
+	// Check the architecture of the container, if does not match, error out
+	arch, err := sy.GetSIFArchs(imgPath, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to extract architecture from %s: %s", imgPath, err)
+	}
+
+	if !sys.CompatibleArch(arch) {
+		return fmt.Errorf("%s's architecture is incompatible with host", imgPath)
+	}
+
+	// Copy the image in the proper directory under SyMPI
+	imgName := filepath.Base(imgPath)
+	targetDir := filepath.Join(sys.GetSympiDir(), sys.ContainerInstallDirPrefix+strings.Replace(imgName, ".sif", "", -1))
+	err = os.MkdirAll(targetDir, 0755)
+	if err != nil {
+		return fmt.Errorf("unable to create %s: %s", targetDir, err)
+	}
+	targetFile := filepath.Join(targetDir, imgName)
+	err = util.CopyFile(imgPath, targetFile)
+	if err != nil {
+		return fmt.Errorf("unable to copy %s to %s: %s", imgPath, targetDir, err)
+	}
+
+	return nil
+}
+
 func main() {
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	debug := flag.Bool("d", false, "Enable debug mode")
@@ -718,6 +745,7 @@ func main() {
 	run := flag.String("run", "", "Run a container")
 	avail := flag.Bool("avail", false, "List all available versions of MPI implementations and Singularity that can be installed on the host")
 	config := flag.Bool("config", false, "Check and configure the system for SyMPI")
+	importCmd := flag.String("import", "", "Import an existing image into SyMPI, e.g., -import <path/to/image>")
 
 	flag.Parse()
 
@@ -861,6 +889,13 @@ func main() {
 		err := listAvail(&sysCfg)
 		if err != nil {
 			log.Fatalf("impossible to list available software that can be installed")
+		}
+	}
+
+	if *importCmd != "" {
+		err := importContainerImg(*importCmd, &sysCfg)
+		if err != nil {
+			log.Fatalf("failed to import container: %s", err)
 		}
 	}
 }
