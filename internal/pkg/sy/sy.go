@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -161,6 +162,7 @@ func GetImageURL(mpiCfg *implem.Info, sysCfg *sys.Config) string {
 	log.Printf("* Getting image URL for %s from %s...", mpiCfg.ID+"-"+mpiCfg.Version, registryConfigFile)
 	kvs, err := kv.LoadKeyValueConfig(registryConfigFile)
 	if err != nil {
+		fmt.Println("Cannot parse", registryConfigFile)
 		return ""
 	}
 	return kv.GetValue(kvs, mpiCfg.Version)
@@ -298,4 +300,44 @@ func LookupConfig(sysCfg *sys.Config) (sys.Config, error) {
 	}
 
 	return s, nil
+}
+
+func getArchsFromSIFListOutput(output string) []string {
+	var archs []string
+
+	re := regexp.MustCompile(`FS \(Squashfs\/\*System\/(.*)\)`)
+
+	lines := strings.Split(output, "\n")
+	for _, l := range lines {
+		a := re.FindStringSubmatch(l)
+		if len(a) == 2 {
+			archs = append(archs, a[1])
+		}
+	}
+
+	return archs
+}
+
+// GetSIFArchs returns the list of hardware architectures supported by a given image.
+//
+// Note that we can have multiple partitions and these partitions can support different
+// hardware architectures
+func GetSIFArchs(imgPath string, sysCfg *sys.Config) ([]string, error) {
+	// Sanity checks
+	if !util.FileExists(imgPath) {
+		return nil, fmt.Errorf("image %s does not exists", imgPath)
+	}
+
+	// Singularity changed the mconfig flags over time so we need to figure out how the prefix is specified
+	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*time.Minute)
+	defer cancel()
+	var stdout bytes.Buffer
+	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "sif", "list", imgPath)
+	cmd.Stdout = &stdout
+	err := cmd.Run()
+	if err != nil {
+		return nil, fmt.Errorf("singularity sif list command failed: %s", err)
+	}
+
+	return getArchsFromSIFListOutput(stdout.String()), nil
 }

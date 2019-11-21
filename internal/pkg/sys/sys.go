@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -171,4 +172,16 @@ func ParseDistroID(distro string) (string, string) {
 // This is mainly used to have a standard way to set directory and file names
 func GetDistroID(distro string) string {
 	return strings.Replace(distro, ":", "_", 1)
+}
+
+// CompatibleArch checks whether the local architecture is compatible with a list of architectures.
+//
+// The list of architectures is for example the output of sy.GetSIFArchs()
+func CompatibleArch(list []string) bool {
+	for _, arch := range list {
+		if arch == runtime.GOARCH {
+			return true
+		}
+	}
+	return false
 }
