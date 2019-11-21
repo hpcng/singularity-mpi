@@ -1,8 +1,6 @@
 name: Go
 on: [push, pull_request]
 jobs:
-  env:
-    GOPATH: $HOME/go
 
   build:
     name: Build
@@ -30,4 +28,6 @@ jobs:
       run: |
         mkdir -p $GOPATH
         make test
+      env:
+        GOPATH: $HOME/go
 
