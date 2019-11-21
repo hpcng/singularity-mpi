@@ -1,5 +1,5 @@
 name: Go
-on: [push]
+on: [push, pull_request]
 jobs:
 
   build:
@@ -24,5 +24,10 @@ jobs:
             dep ensure
         fi
 
-    - name: Build
-      run: make
+    - name: Build and test
+      run: |
+        mkdir -p $GOPATH
+        make test
+      env:
+        GOPATH: /tmp/go
+
