@@ -19,7 +19,7 @@ func TestGetImageURL(t *testing.T) {
 	var mpiCfg implem.Info
 	var sysCfg sys.Config
 
-	sysCfg.EtcDir = filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "sylabs", "singularity-mpi", "etc")
+	sysCfg.EtcDir = filepath.Join(os.Getenv("GOPATH"), "etc")
 
 	mpiCfg.ID = "openmpi"
 	mpiCfg.Version = "4.0.0"

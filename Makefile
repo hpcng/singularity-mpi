@@ -17,8 +17,9 @@ sycontainerize:
 install: all
 	go install ./...
 	@cp -f cmd/sympi/sympi_init ${GOPATH}/bin
+	@cp -rf etc ${GOPATH}
 
-test:
+test: install
 	go test ./...
 
 uninstall:
