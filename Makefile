@@ -18,6 +18,9 @@ install: all
 	go install ./...
 	@cp -f cmd/sympi/sympi_init ${GOPATH}/bin
 
+test:
+	go test -v ./...
+
 uninstall:
 	@rm -f $(GOPATH)/bin/sympi \
 		$(GOPATH)/bin/syvalidate \

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -27,8 +28,12 @@ func TestDetect(t *testing.T) {
 
 func TestTempFile(t *testing.T) {
 	var j job.Job
+	var containerCfg container.Config
 	var sysCfg sys.Config
 	var env buildenv.Info
+
+	containerCfg.Name = "containerName"
+	j.Container = &containerCfg
 
 	err := TempFile(&j, &env, &sysCfg)
 	if err != nil {

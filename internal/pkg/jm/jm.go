@@ -96,6 +96,7 @@ func TempFile(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) error {
 		}
 		path = f.Name()
 		f.Close()
+		j.BatchScript = path
 	} else {
 		fileName := filePrefix + ".sh"
 		path = filepath.Join(env.InstallDir, fileName)
