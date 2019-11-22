@@ -363,6 +363,7 @@ func (b *Builder) CompileAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildE
 
 	log.Printf("Build MPI in %s from %s\n", buildEnv.BuildDir, mpi.URL)
 	log.Printf("Install MPI in %s\n", buildEnv.InstallDir)
+	mpiCfg.Buildenv.InstallDir = buildEnv.InstallDir
 
 	if !util.PathExists(buildEnv.BuildDir) {
 		err := util.DirInit(buildEnv.BuildDir)
@@ -375,8 +376,6 @@ func (b *Builder) CompileAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildE
 	if res.Err != nil {
 		return fmt.Errorf("failed to install MPI on host: %s", res.Err)
 	}
-
-	mpiCfg.Buildenv.InstallDir = buildEnv.InstallDir
 
 	// Install the app on the host
 	buildEnv.BuildDir = filepath.Join(sysCfg.ScratchDir, appInfo.Name)
