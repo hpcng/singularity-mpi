@@ -733,6 +733,26 @@ func importContainerImg(imgPath string, sysCfg *sys.Config) error {
 	return nil
 }
 
+func exportContainerImg(containerID string) string {
+	// Figure out the path to the image
+	imgStoredPath := filepath.Join(getSyMPIBaseDir(), sys.ContainerInstallDirPrefix+containerID, containerID+".sif")
+	if !util.FileExists(imgStoredPath) {
+		log.Printf("%s does not exist", imgStoredPath)
+		return ""
+	}
+
+	// Copy the image to /tmp
+	targetPath := filepath.Join("/tmp", containerID+".sif")
+	err := util.CopyFile(imgStoredPath, targetPath)
+	if err != nil {
+		log.Printf("failed to copy image from %s to %s: %s", imgStoredPath, targetPath, err)
+		return ""
+	}
+
+	// Return the path
+	return targetPath
+}
+
 func main() {
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	debug := flag.Bool("d", false, "Enable debug mode")
@@ -746,6 +766,7 @@ func main() {
 	avail := flag.Bool("avail", false, "List all available versions of MPI implementations and Singularity that can be installed on the host")
 	config := flag.Bool("config", false, "Check and configure the system for SyMPI")
 	importCmd := flag.String("import", "", "Import an existing image into SyMPI, e.g., -import <path/to/image>")
+	export := flag.String("export", "", "Export a container image")
 
 	flag.Parse()
 
@@ -897,5 +918,13 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to import container: %s", err)
 		}
+	}
+
+	if *export != "" {
+		imgPath := exportContainerImg(*export)
+		if imgPath == "" {
+			log.Fatalf("failed to export container %s", *export)
+		}
+		fmt.Printf("Container successfully exported: %s\n", imgPath)
 	}
 }
