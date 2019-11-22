@@ -152,7 +152,6 @@ func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) 
 
 		// todo: should call the builder and not directly that function
 		deffileCfg.InternalEnv.InstallDir = mpiCfg.Buildenv.InstallDir
-		fmt.Printf("CHECKME: %s\n", deffileCfg.InternalEnv.InstallDir)
 		err = deffile.CreateBindDefFile(&app.info, &deffileCfg, sysCfg)
 		if err != nil {
 			return def, fmt.Errorf("unable to create container: %s", err)

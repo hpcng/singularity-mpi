@@ -144,14 +144,6 @@ func (b *Builder) install(pkg *implem.Info, env *buildenv.Info, sysCfg *sys.Conf
 func (b *Builder) InstallOnHost(pkg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
 	var res syexec.Result
 
-	if env.InstallDir == "" {
-		fmt.Println("undefined install dir")
-	}
-
-	if pkg.URL == "" {
-		fmt.Println("undefined URL")
-	}
-
 	// Sanity checks
 	if env.InstallDir == "" || pkg.URL == "" {
 		res.Err = fmt.Errorf("invalid parameter(s)")

@@ -104,7 +104,6 @@ func addLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 		return err
 	}
 
-	//deffile.InternalEnv.InstallDir = setMPIInstallDir(deffile.MpiImplm.ID, deffile.MpiImplm.Version)
 	_, err = f.WriteString("\tMPI_Directory " + deffile.InternalEnv.InstallDir + "\n")
 	if err != nil {
 		return err
@@ -305,8 +304,6 @@ func AddMPIInstall(f *os.File, deffile *DefFileData) error {
 
 // addMPIEnv adds all the data to the definition file to specify the environment of the MPI installation in the container
 func addMPIEnv(f *os.File, deffile *DefFileData) error {
-	//deffile.InternalEnv.InstallDir = setMPIInstallDir(deffile.MpiImplm.ID, deffile.MpiImplm.Version)
-
 	_, err := f.WriteString("%environment\n\tMPI_DIR=" + deffile.InternalEnv.InstallDir + "\n")
 	if err != nil {
 		return err
