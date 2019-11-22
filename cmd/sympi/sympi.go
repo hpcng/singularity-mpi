@@ -791,7 +791,7 @@ func main() {
 				"\t\tsquashfs-tools \\ \n" +
 				"\t\tcryptsetup shadow-utils \\ \n" +
 				"\t\tgcc gcc-gfortran gcc-c++ make \\ \n")
-			fmt.Printf("On RPM system, you may also want to run the following commands as root to enable fakeroot:\n\tgrubby --args=\"user_namespace.enable=1\" --update-kernel=\"$(grubby --default-kernel)\" \\ \n" +
+			fmt.Printf("On RPM systems, you may also want to run the following commands as root to enable fakeroot:\n\tgrubby --args=\"user_namespace.enable=1\" --update-kernel=\"$(grubby --default-kernel)\" \\ \n" +
 				"\tsudo echo \"user.max_user_namespaces=15000\" >> /etc/sysctl.conf\n")
 			log.Fatalf("System not setup properly: %s", err)
 		}
