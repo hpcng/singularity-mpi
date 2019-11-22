@@ -144,6 +144,14 @@ func (b *Builder) install(pkg *implem.Info, env *buildenv.Info, sysCfg *sys.Conf
 func (b *Builder) InstallOnHost(pkg *implem.Info, env *buildenv.Info, sysCfg *sys.Config) syexec.Result {
 	var res syexec.Result
 
+	if env.InstallDir == "" {
+		fmt.Println("undefined install dir")
+	}
+
+	if pkg.URL == "" {
+		fmt.Println("undefined URL")
+	}
+
 	// Sanity checks
 	if env.InstallDir == "" || pkg.URL == "" {
 		res.Err = fmt.Errorf("invalid parameter(s)")
@@ -363,6 +371,7 @@ func (b *Builder) CompileAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildE
 
 	log.Printf("Build MPI in %s from %s\n", buildEnv.BuildDir, mpi.URL)
 	log.Printf("Install MPI in %s\n", buildEnv.InstallDir)
+	mpiCfg.Buildenv.InstallDir = buildEnv.InstallDir
 
 	if !util.PathExists(buildEnv.BuildDir) {
 		err := util.DirInit(buildEnv.BuildDir)
@@ -375,8 +384,6 @@ func (b *Builder) CompileAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildE
 	if res.Err != nil {
 		return fmt.Errorf("failed to install MPI on host: %s", res.Err)
 	}
-
-	mpiCfg.Buildenv.InstallDir = buildEnv.InstallDir
 
 	// Install the app on the host
 	buildEnv.BuildDir = filepath.Join(sysCfg.ScratchDir, appInfo.Name)

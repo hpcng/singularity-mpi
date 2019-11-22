@@ -305,6 +305,12 @@ func main() {
 		log.Fatalf("failed to load the tool's configuration: %s", err)
 	}
 
+	// Try to get more data about the configuration of Singularity
+	sysCfg, err = sy.LookupConfig(&sysCfg)
+	if err != nil {
+		log.Fatalf("failed to check configuration of Singularity")
+	}
+
 	// Figure out all the experiments that need to be executed
 	experiments := getListExperiments(config)
 	mpiImplem, err := exp.GetMPIImplemFromExperiments(experiments)

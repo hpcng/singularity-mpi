@@ -70,8 +70,8 @@ func setMPIInstallDir(mpiImplm string, mpiVersion string) string {
 	return mpiImplm + "-" + mpiVersion
 }
 
-// AddLabels adds a set of labels to the definition file.
-func AddLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
+// addLabels adds a set of labels to the definition file.
+func addLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 	// Some sanity checks
 	if deffile.InternalEnv == nil {
 		return fmt.Errorf("invalid parameter(s)")
@@ -104,8 +104,8 @@ func AddLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 		return err
 	}
 
-	deffile.InternalEnv.InstallDir = setMPIInstallDir(deffile.MpiImplm.ID, deffile.MpiImplm.Version)
-	_, err = f.WriteString("\tMPI_Directory /opt/" + deffile.InternalEnv.InstallDir + "\n")
+	//deffile.InternalEnv.InstallDir = setMPIInstallDir(deffile.MpiImplm.ID, deffile.MpiImplm.Version)
+	_, err = f.WriteString("\tMPI_Directory " + deffile.InternalEnv.InstallDir + "\n")
 	if err != nil {
 		return err
 	}
@@ -129,6 +129,9 @@ func AddLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 	} else {
 		// When dealing with the hybrid model, we do not really know the path to the executable
 		// so we rely on the data in the app.Config structure (from user input)
+		if app.BinPath == "" {
+			app.BinPath = "/opt/" + app.BinName
+		}
 		_, err = f.WriteString("\tApp_exe " + app.BinPath + "\n")
 		if err != nil {
 			return err
@@ -269,12 +272,12 @@ func AddMPIInstall(f *os.File, deffile *DefFileData) error {
 		return err
 	}
 
-	_, err = f.WriteString("\texport MPI_DIR=/opt/" + deffile.InternalEnv.InstallDir + "\n")
+	_, err = f.WriteString("\texport MPI_DIR=" + deffile.InternalEnv.InstallDir + "\n")
 	if err != nil {
 		return err
 	}
 
-	_, err = f.WriteString("\tmkdir -p /tmp/mpi\n\tmkdir -p /opt\n\n")
+	_, err = f.WriteString("\texport MPI_BUILDDIR=/opt/build-mpi\n\tmkdir -p $MPI_BUILDDIR\n\n")
 	if err != nil {
 		return err
 	}
@@ -282,12 +285,12 @@ func AddMPIInstall(f *os.File, deffile *DefFileData) error {
 	mpitarball := path.Base(deffile.MpiImplm.URL)
 	tarballFormat := util.DetectTarballFormat(mpitarball)
 	tarArgs := util.GetTarArgs(tarballFormat)
-	_, err = f.WriteString("\tcd /tmp/mpi && wget $MPI_URL && tar " + tarArgs + " " + mpitarball + "\n")
+	_, err = f.WriteString("\tcd $MPI_BUILDDIR && wget $MPI_URL && tar " + tarArgs + " " + mpitarball + "\n")
 	if err != nil {
 		return err
 	}
 
-	_, err = f.WriteString("\tcd /tmp/mpi/" + deffile.MpiImplm.ID + "-$MPI_VERSION && ./configure --prefix=$MPI_DIR && make -j8 install\n")
+	_, err = f.WriteString("\tcd $MPI_BUILDDIR/" + deffile.MpiImplm.ID + "-$MPI_VERSION && ./configure --prefix=$MPI_DIR && make -j8 install\n")
 	if err != nil {
 		return err
 	}
@@ -300,16 +303,16 @@ func AddMPIInstall(f *os.File, deffile *DefFileData) error {
 	return nil
 }
 
-// AddMPIEnv adds all the data to the definition file to specify the environment of the MPI installation in the container
-func AddMPIEnv(f *os.File, deffile *DefFileData) error {
-	deffile.InternalEnv.InstallDir = setMPIInstallDir(deffile.MpiImplm.ID, deffile.MpiImplm.Version)
+// addMPIEnv adds all the data to the definition file to specify the environment of the MPI installation in the container
+func addMPIEnv(f *os.File, deffile *DefFileData) error {
+	//deffile.InternalEnv.InstallDir = setMPIInstallDir(deffile.MpiImplm.ID, deffile.MpiImplm.Version)
 
-	_, err := f.WriteString("%environment\n\tMPI_DIR=/opt/" + deffile.InternalEnv.InstallDir + "\n")
+	_, err := f.WriteString("%environment\n\tMPI_DIR=" + deffile.InternalEnv.InstallDir + "\n")
 	if err != nil {
 		return err
 	}
 
-	_, err = f.WriteString("\texport MPI_DIR\n\texport SINGULARITY_MPI_DIR=$MPI_DIR\n\texport SINGULARITYENV_APPEND_PATH=$MPI_DIR/bin\n\texport SINGULARITYENV_APPEND_LD_LIBRARY_PATH=$MPI_DIR/lib\n\n")
+	_, err = f.WriteString("\texport MPI_DIR\n\texport PATH=$MPI_DIR/bin:$PATH\n\texport LD_LIBRARY_PATH=$MPI_DIR/lib:$LD_LIBRARY_PATH\n\n")
 	if err != nil {
 		return err
 	}
@@ -436,15 +439,30 @@ func addAppInstall(f *os.File, app *app.Info, data *DefFileData) error {
 		}
 	case util.FileURL:
 		containerSrcPath := filepath.Join(data.InternalEnv.SrcDir, filepath.Base(app.Source))
-		_, err := f.WriteString("\tcd /opt/$APPDIR && mpicc -o " + app.BinPath + " " + containerSrcPath + "\n")
-		if err != nil {
-			return fmt.Errorf("failed to write to definition file: %s", err)
+		if app.BinPath != "" {
+			_, err := f.WriteString("\tcd /opt/$APPDIR && mpicc -o " + app.BinPath + " " + containerSrcPath + "\n")
+			if err != nil {
+				return fmt.Errorf("failed to write to definition file: %s", err)
+			}
+		} else if app.InstallCmd != "" {
+			_, err := f.WriteString("\tcd /opt/$APPDIR && " + app.InstallCmd + "\n")
+			if err != nil {
+				return fmt.Errorf("failed to write to definition file: %s", err)
+			}
+		} else {
+			return fmt.Errorf("unable to figure out how to compile source file")
 		}
 	case util.HttpURL:
-		_, err := f.WriteString("\tcd /opt/$APPDIR && " + installCmd)
+		_, err := f.WriteString("\tcd /opt/$APPDIR && " + installCmd + "\n")
 		if err != nil {
 			return fmt.Errorf("failed to write to definition file: %s", err)
 		}
+	}
+
+	// A little magic to know exactly where the binary is
+	_, err := f.WriteString("\tcd /opt && ln -s $APPDIR/" + app.BinName + " " + app.BinName + " 2> /dev/null || true\n\n")
+	if err != nil {
+		return fmt.Errorf("failed to write to definition file: %s", err)
 	}
 
 	// todo: Clean up
@@ -459,7 +477,12 @@ func addAppInstall(f *os.File, app *app.Info, data *DefFileData) error {
 }
 
 func addMPICleanup(f *os.File, app *app.Info, data *DefFileData) error {
-	// todo
+	if data.Model == container.HybridModel {
+		_, err := f.WriteString("\n\trm -rf $MPI_BUILDDIR\n\n")
+		if err != nil {
+			return fmt.Errorf("failed to add MPI cleanup section: %s", err)
+		}
+	}
 	return nil
 }
 
@@ -580,7 +603,7 @@ func addCleanUp(f *os.File, distroID string) error {
 	return nil
 }
 
-// CreateBindDefFile creates a definition file for a given bybrid-based configuration.
+// CreateHybridDefFile creates a definition file for a given bybrid-based configuration.
 func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) error {
 	// Some sanity checks
 	if data.Path == "" {
@@ -598,7 +621,7 @@ func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) e
 		return fmt.Errorf("failed to create the bootstrap section of the definition file: %s", err)
 	}
 
-	err = AddLabels(f, app, data)
+	err = addLabels(f, app, data)
 	if err != nil {
 		return fmt.Errorf("failed to create the files section of the definition file: %s", err)
 	}
@@ -610,7 +633,7 @@ func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) e
 		}
 	}
 
-	err = AddMPIEnv(f, data)
+	err = addMPIEnv(f, data)
 	if err != nil {
 		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
 	}
@@ -689,7 +712,7 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 		return fmt.Errorf("failed to create the bootstrap section of the definition file: %s", err)
 	}
 
-	err = AddLabels(f, app, data)
+	err = addLabels(f, app, data)
 	if err != nil {
 		return fmt.Errorf("failed to create the files section of the definition file: %s", err)
 	}
@@ -700,7 +723,7 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 		return fmt.Errorf("failed to create the files section of the definition file: %s", err)
 	}
 
-	err = AddMPIEnv(f, data)
+	err = addMPIEnv(f, data)
 	if err != nil {
 		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
 	}
@@ -713,6 +736,12 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 	err = addDependencies(f, data.Distro, pkgs)
 	if err != nil {
 		return fmt.Errorf("failed to add package dependencies to the definition file: %s", err)
+	}
+
+	// Create the directory where MPI will be mounted
+	_, err = f.WriteString("\tmkdir -p " + data.InternalEnv.InstallDir + "\n\n")
+	if err != nil {
+		return fmt.Errorf("failed to write to definition file: %s", err)
 	}
 
 	err = addCleanUp(f, data.Distro)
