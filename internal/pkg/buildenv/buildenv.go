@@ -397,6 +397,21 @@ func (env *Info) Install(p *SoftwarePackage) error {
 	return nil
 }
 
+func getDefaultHostMPIInstallDir(mpi *implem.Info, sysCfg *sys.Config) (string, error) {
+	installDir := persistent.GetPersistentHostMPIInstallDir(mpi, sysCfg)
+
+	if sysCfg.Persistent == "" {
+		// Create a temporary directory where to install MPI
+		installDir = filepath.Join(sysCfg.ScratchDir, sys.MPIInstallDirPrefix+mpi.ID+"-"+mpi.Version)
+		err := util.DirInit(installDir)
+		if err != nil {
+			return "", fmt.Errorf("failed to initialize directory %s: %s", installDir, err)
+		}
+	}
+
+	return installDir, nil
+}
+
 // CreateDefaultHostEnvCfg returns the default configuration to install/manage MPI on the host
 func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) error {
 	/* SET THE BUILD DIRECTORY */
@@ -410,16 +425,9 @@ func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) er
 	}
 
 	/* SET THE INSTALL DIRECTORY */
-
-	if sysCfg.Persistent == "" {
-		// Create a temporary directory where to install MPI
-		env.InstallDir = filepath.Join(sysCfg.ScratchDir, sys.MPIInstallDirPrefix+mpi.ID+"-"+mpi.Version)
-		err := util.DirInit(env.InstallDir)
-		if err != nil {
-			return fmt.Errorf("failed to initialize directory %s: %s", env.InstallDir, err)
-		}
-	} else {
-		env.InstallDir = persistent.GetPersistentHostMPIInstallDir(mpi, sysCfg)
+	env.InstallDir, err = getDefaultHostMPIInstallDir(mpi, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to get installation directory: %s", err)
 	}
 
 	/* SET THE SCRATCH DIRECTORY */

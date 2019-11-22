@@ -138,6 +138,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	myContainerMPICfg.Buildenv = exp.ContainerBuildEnv
 	myContainerMPICfg.Container.Name = container.GetContainerDefaultName(exp.Container.Distro, exp.ContainerMPI.ID, exp.ContainerMPI.Version, exp.App.Name, container.HybridModel) + ".sif"
 	myContainerMPICfg.Container.Path = filepath.Join(myContainerMPICfg.Buildenv.InstallDir, myContainerMPICfg.Container.Name)
+	exp.Container.Path = myContainerMPICfg.Container.Path
 	myContainerMPICfg.Container.Model = container.HybridModel
 	myContainerMPICfg.Container.URL = sy.GetImageURL(&myContainerMPICfg.Implem, sysCfg)
 	myContainerMPICfg.Container.BuildDir = myContainerMPICfg.Buildenv.BuildDir
@@ -208,7 +209,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 	log.Println("-> MPI URL:", myContainerMPICfg.Implem.URL)
 
 	// Pull or build the image
-	if syConfig.BuildPrivilege {
+	if syConfig.BuildPrivilege || sysCfg.Nopriv {
 		if !util.PathExists(exp.Container.Path) {
 			execRes = createNewContainer(&myContainerMPICfg, exp, sysCfg, syConfig)
 			if execRes.Err != nil {
