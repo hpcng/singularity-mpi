@@ -23,7 +23,7 @@ const (
 	DefaultSympiInstallDir = ".sympi"
 
 	// CmdTimetout is the maximum time we allow a command to run
-	CmdTimeout = 10
+	CmdTimeout = 20
 
 	// DefaultUbuntuDistro is the default Ubuntu distribution we use
 	DefaultUbuntuDistro = "disco"
