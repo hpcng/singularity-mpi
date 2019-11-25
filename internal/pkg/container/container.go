@@ -133,6 +133,18 @@ func Create(container *Config, sysCfg *sys.Config) error {
 		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
 	}
 
+	// We make all SIF file executable to make it easier to integrate with other tools
+	// such as PRRTE.
+	f, err := os.Open(container.Path)
+	if err != nil {
+		return fmt.Errorf("failed to open %s", container.Path)
+	}
+	defer f.Close()
+	err = f.Chmod(0755)
+	if err != nil {
+		return fmt.Errorf("failed to change %s mode", container.Path)
+	}
+
 	return nil
 }
 
