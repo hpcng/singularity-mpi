@@ -58,7 +58,7 @@ func getBindArguments(hostMPI *implem.Info, hostBuildenv *buildenv.Info, c *cont
 
 // GetMpirunArgs returns the arguments required by a mpirun
 func GetMpirunArgs(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, app *app.Info, syContainer *container.Config, sysCfg *sys.Config) ([]string, error) {
-	args := []string{"singularity", "exec", "--cleanenv", "--contain", "--no-home", "--writable"}
+	args := []string{"singularity", "exec", "--no-home", "--writable"}
 
 	if sysCfg.Nopriv {
 		args = append(args, "-u")
