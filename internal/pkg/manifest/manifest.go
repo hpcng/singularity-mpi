@@ -18,7 +18,7 @@ func Create(filepath string, entries []string) error {
 		return fmt.Errorf("failed to create %s: %s", filepath, err)
 	}
 
-	_, err = f.WriteString(strings.Join(entries, " "))
+	_, err = f.WriteString(strings.Join(entries, "\n"))
 	if err != nil {
 		return fmt.Errorf("failed to write to %s: %s", filepath, err)
 	}
