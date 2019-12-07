@@ -320,7 +320,7 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	}
 
 	if cleanup != nil {
-		//defer cleanup()
+		defer cleanup()
 	}
 
 	containerMPI.Buildenv = containerBuildEnv
