@@ -16,8 +16,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
@@ -27,10 +25,13 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
+// UpdateEnvFile updates the file that is automatically sources while using
+// SyMPI and setting the environment.
 func UpdateEnvFile(file string, pathEnv string, ldlibEnv string) error {
 	// sanity checks
 	if len(pathEnv) == 0 {
@@ -73,6 +74,8 @@ func getPPPID() (int, error) {
 	return pppid, nil
 }
 
+// GetEnvFile returns the absolute path to the file that is automatically sources while using
+// SyMPI.
 func GetEnvFile() (string, error) {
 	pppid, err := getPPPID()
 	if err != nil {
@@ -106,14 +109,21 @@ func cleanupEnvVar(prefix string) ([]string, []string) {
 	return newPath, newLDLIB
 }
 
+// GetCleanedUpSyEnvVars parses the current environment and cleans up to
+// ensure that is not interference between the currently loaded installation
+// of Singularity and what was previously used.
 func GetCleanedUpSyEnvVars() ([]string, []string) {
 	return cleanupEnvVar(sys.SingularityInstallDirPrefix)
 }
 
+// GetCleanedUpMPIEnvVars parses the current environment and cleans up to
+// ensure that is not interference between the currently loaded installation
+// of MPI and what was previously used.
 func GetCleanedUpMPIEnvVars() ([]string, []string) {
 	return cleanupEnvVar(sys.MPIInstallDirPrefix)
 }
 
+// LoadMPI loads a specific implementation of MPI in the current environment.
 func LoadMPI(id string) error {
 	// We can change the env multiple times during the execution of a single command
 	// and these modifications will NOT be reflected in the actual environment until
@@ -161,6 +171,7 @@ func getImagePath(containerDesc string, sysCfg *sys.Config) (string, error) {
 	return imgPath, nil
 }
 
+// GetDefaultSysConfig loads the default system configuration
 func GetDefaultSysConfig() sys.Config {
 	sysCfg, _, _, err := launcher.Load()
 	if err != nil {
@@ -251,6 +262,8 @@ func runMPIContainer(args []string, containerMPI *implem.Info, containerInfo *co
 	return execRes, nil
 }
 
+// RunContainer is a high-level function to execute a container that was created with the
+// SyMPI framework (it relies on metadata)
 func RunContainer(containerDesc string, args []string, sysCfg *sys.Config) error {
 	// When running containers with sympi, we are always in the context of persistent installs
 	sysCfg.Persistent = sys.GetSympiDir()
@@ -291,6 +304,8 @@ func RunContainer(containerDesc string, args []string, sysCfg *sys.Config) error
 	return nil
 }
 
+// GetHostMPIInstalls returns all the MPI implementations installed in the current
+// workspace
 func GetHostMPIInstalls(entries []os.FileInfo) ([]string, error) {
 	var hostInstalls []string
 
@@ -355,6 +370,7 @@ func findCompatibleMPI(targetMPI *implem.Info) (implem.Info, error) {
 	return mpi, fmt.Errorf("no compatible version available")
 }
 
+// GetMPIDetails extract the details of a specific MPI implementation from its description
 func GetMPIDetails(desc string) (string, string) {
 	tokens := strings.Split(desc, ":")
 	if len(tokens) != 2 {
@@ -364,6 +380,7 @@ func GetMPIDetails(desc string) (string, string) {
 	return tokens[0], tokens[1]
 }
 
+// InstallMPIonHost installs a specific implementation of MPI on the host
 func InstallMPIonHost(mpiDesc string, sysCfg *sys.Config) error {
 	var mpiCfg implem.Info
 	mpiCfg.ID, mpiCfg.Version = GetMPIDetails(mpiDesc)

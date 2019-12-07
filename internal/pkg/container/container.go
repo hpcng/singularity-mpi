@@ -365,6 +365,7 @@ func getBindArguments(hostMPI *implem.Info, hostBuildenv *buildenv.Info, c *Conf
 	return bindArgs
 }
 
+// GetExecArgs figures out the singularity exec arguments to be used for executing a container
 func GetExecArgs(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, syContainer *Config, sysCfg *sys.Config) []string {
 	args := getDefaultExecArgs()
 	if sysCfg.Nopriv {
