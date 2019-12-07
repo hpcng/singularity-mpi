@@ -145,9 +145,10 @@ func (c *SyCmd) Run() Result {
 				log.Printf("failed to create manifest: %s", err)
 			}
 			log.Printf("-> Manifest successfully created (%s)", path)
+
+		} else {
+			log.Printf("Manifest %s already exists, skipping...", err)
 		}
-	} else {
-		log.Printf("Manifest %s already exists, skipping...", err)
 	}
 
 	return res
