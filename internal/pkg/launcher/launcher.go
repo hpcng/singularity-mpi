@@ -54,6 +54,7 @@ func prepareLaunchCmd(j *job.Job, jobmgr *jm.JM, hostEnv *buildenv.Info, sysCfg 
 	cmd.Cmd = exec.CommandContext(cmd.Ctx, launchCmd.BinPath, launchCmd.CmdArgs...)
 	cmd.Cmd.Stdout = &j.OutBuffer
 	cmd.Cmd.Stderr = &j.ErrBuffer
+	cmd.Cmd.Env = launchCmd.Env
 
 	return cmd, nil
 }
@@ -172,21 +173,30 @@ func SaveErrorDetails(hostMPI *implem.Info, containerMPI *implem.Info, sysCfg *s
 }
 
 // Run executes a container with a specific version of MPI on the host
-func Run(appInfo *app.Info, hostMPI *mpi.Config, hostBuildEnv *buildenv.Info, containerMPI *mpi.Config, jobmgr *jm.JM, sysCfg *sys.Config) (results.Result, syexec.Result) {
+func Run(appInfo *app.Info, hostMPI *mpi.Config, hostBuildEnv *buildenv.Info, containerMPI *mpi.Config, jobmgr *jm.JM, sysCfg *sys.Config, args []string) (results.Result, syexec.Result) {
 	var execRes syexec.Result
 	var expRes results.Result
+	var newjob job.Job
 
-	// mpiJob describes the job
-	var mpiJob job.Job
-	mpiJob.HostCfg = &hostMPI.Implem
-	mpiJob.Container = &containerMPI.Container
-	mpiJob.App.BinPath = appInfo.BinPath
-	mpiJob.NNodes = 2
-	mpiJob.NP = 2
+	if hostMPI != nil {
+		newjob.HostCfg = &hostMPI.Implem
+	}
+
+	if containerMPI != nil {
+		newjob.Container = &containerMPI.Container
+	}
+
+	newjob.App.BinPath = appInfo.BinPath
+	if len(args) == 0 {
+		newjob.NNodes = 2
+		newjob.NP = 2
+	} else {
+		newjob.Args = args
+	}
 
 	// We submit the job
 	var submitCmd syexec.SyCmd
-	submitCmd, execRes.Err = prepareLaunchCmd(&mpiJob, jobmgr, hostBuildEnv, sysCfg)
+	submitCmd, execRes.Err = prepareLaunchCmd(&newjob, jobmgr, hostBuildEnv, sysCfg)
 	if execRes.Err != nil {
 		execRes.Err = fmt.Errorf("failed to prepare the launch command: %s", execRes.Err)
 		expRes.Pass = false
@@ -206,16 +216,20 @@ func Run(appInfo *app.Info, hostMPI *mpi.Config, hostBuildEnv *buildenv.Info, co
 	execRes.Stderr = stderr.String()
 	execRes.Stdout = stdout.String()
 	// And add the job out/err (for when we actually use a real job manager such as Slurm)
-	execRes.Stdout += mpiJob.GetOutput(&mpiJob, sysCfg)
-	execRes.Stderr += mpiJob.GetError(&mpiJob, sysCfg)
+	execRes.Stdout += newjob.GetOutput(&newjob, sysCfg)
+	execRes.Stderr += newjob.GetError(&newjob, sysCfg)
 	if err != nil || submitCmd.Ctx.Err() == context.DeadlineExceeded || re.Match(stdout.Bytes()) {
-		log.Printf("[INFO] mpirun command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
+		log.Printf("[INFO] command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
 		execRes.Err = err
-		err = SaveErrorDetails(&hostMPI.Implem, &containerMPI.Implem, sysCfg, &execRes)
-		if err != nil {
-			execRes.Err = fmt.Errorf("impossible to cleanly handle error: %s", err)
-			expRes.Pass = false
-			return expRes, execRes
+		if hostMPI != nil && containerMPI != nil {
+			err = SaveErrorDetails(&hostMPI.Implem, &containerMPI.Implem, sysCfg, &execRes)
+			if err != nil {
+				execRes.Err = fmt.Errorf("impossible to cleanly handle error: %s", err)
+				expRes.Pass = false
+				return expRes, execRes
+			}
+		} else {
+			log.Println("Not an MPI job, not saving error details")
 		}
 		expRes.Pass = false
 		return expRes, execRes

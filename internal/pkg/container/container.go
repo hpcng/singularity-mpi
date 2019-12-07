@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
@@ -36,6 +37,9 @@ const (
 
 	// BindModel is the identifier used to identify the bind-mount model
 	BindModel = "bind"
+
+	// defaultExecArgs
+	defaultExecArgs = "--no-home --writable"
 )
 
 // Config is a structure representing a container
@@ -341,4 +345,39 @@ func GetMetadata(imgPath string, sysCfg *sys.Config) (Config, implem.Info, error
 	metadata, mpiCfg = parseInspectOutput(stdout.String())
 	metadata.Path = imgPath
 	return metadata, mpiCfg, nil
+}
+
+func getDefaultExecArgs() []string {
+	return strings.Split(defaultExecArgs, " ")
+}
+
+func getBindArguments(hostMPI *implem.Info, hostBuildenv *buildenv.Info, c *Config) []string {
+	var bindArgs []string
+
+	if c.Model == BindModel {
+		if c.MPIDir == "" {
+			log.Println("[WARN] the path to mount MPI in the container is undefined")
+		}
+		bindStr := hostBuildenv.InstallDir + ":" + c.MPIDir
+		bindArgs = append(bindArgs, bindStr)
+	}
+
+	return bindArgs
+}
+
+func GetExecArgs(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, syContainer *Config, sysCfg *sys.Config) []string {
+	args := getDefaultExecArgs()
+	if sysCfg.Nopriv {
+		args = append(args, "-u")
+	}
+
+	bindArgs := getBindArguments(myHostMPICfg, hostBuildEnv, syContainer)
+	if len(bindArgs) > 0 {
+		args = append(args, "--bind")
+		args = append(args, bindArgs...)
+	}
+
+	log.Printf("-> Exec args to use: %s\n", strings.Join(args, " "))
+
+	return args
 }

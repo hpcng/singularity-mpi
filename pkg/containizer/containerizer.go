@@ -110,51 +110,69 @@ func generateEnvFile(app *appConfig, mpiCfg *implem.Info, env *buildenv.Info, sy
 	return nil
 }
 
-func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
-	var def deffile.DefFileData
-
-	// Sanity checks
-	if app == nil || mpiCfg == nil || sysCfg == nil || mpiCfg.Container.DefFile == "" {
-		return def, fmt.Errorf("invalid parameter(s)")
+func generateStandardDeffile(app *appConfig, container *container.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
+	deffileCfg := deffile.DefFileData{
+		Path:   container.DefFile,
+		Distro: container.Distro,
 	}
 
-	log.Printf("-> Create definition file %s\n", mpiCfg.Container.DefFile)
+	// Sanity checks
+	if app == nil || container == nil || sysCfg == nil || container.DefFile == "" {
+		return deffileCfg, fmt.Errorf("invalid parameter(s)")
+	}
 
+	log.Printf("-> Create definition file %s\n", container.DefFile)
+
+	err := deffile.CreateBasicDefFile(&app.info, &deffileCfg, sysCfg)
+	if err != nil {
+		return deffileCfg, fmt.Errorf("unable to create container: %s", err)
+	}
+
+	return deffileCfg, nil
+}
+
+func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
 	deffileCfg := deffile.DefFileData{
 		Path:   mpiCfg.Container.DefFile,
 		Distro: mpiCfg.Container.Distro,
 	}
 
+	// Sanity checks
+	if app == nil || mpiCfg == nil || sysCfg == nil || mpiCfg.Container.DefFile == "" {
+		return deffileCfg, fmt.Errorf("invalid parameter(s)")
+	}
+
+	log.Printf("-> Create definition file %s\n", mpiCfg.Container.DefFile)
+
 	deffileCfg.MpiImplm = &mpiCfg.Implem
 	deffileCfg.InternalEnv = &mpiCfg.Buildenv
 	deffileCfg.Model = mpiCfg.Container.Model
-	deffileCfg.Distro = mpiCfg.Container.Distro
 
 	switch mpiCfg.Container.Model {
 	case container.HybridModel:
 		// todo: should call the builder and not directly that function
 		err := deffile.CreateHybridDefFile(&app.info, &deffileCfg, sysCfg)
 		if err != nil {
-			return def, fmt.Errorf("unable to create container: %s", err)
+			return deffileCfg, fmt.Errorf("unable to create container: %s", err)
 		}
 	case container.BindModel:
 		b, err := builder.Load(&mpiCfg.Implem)
 		if err != nil {
-			return def, fmt.Errorf("unable to instantiate builder")
+			return deffileCfg, fmt.Errorf("unable to instantiate builder")
 		}
 
 		var hostAppBuildEnv buildenv.Info
 		log.Println("Bind mode: compiling application on the host...")
-		err = b.CompileAppOnHost(&app.info, mpiCfg, &hostAppBuildEnv, sysCfg)
+		err = b.CompileMPIAppOnHost(&app.info, mpiCfg, &hostAppBuildEnv, sysCfg)
 		if err != nil {
-			return def, fmt.Errorf("failed to compile the application on the host: %s", err)
+			return deffileCfg, fmt.Errorf("failed to compile the application on the host: %s", err)
 		}
 
 		// todo: should call the builder and not directly that function
 		deffileCfg.InternalEnv.InstallDir = mpiCfg.Buildenv.InstallDir
 		err = deffile.CreateBindDefFile(&app.info, &deffileCfg, sysCfg)
 		if err != nil {
-			return def, fmt.Errorf("unable to create container: %s", err)
+			return deffileCfg, fmt.Errorf("unable to create container: %s", err)
 		}
 	}
 
@@ -293,10 +311,18 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 		if err != nil {
 			return containerMPI.Container, fmt.Errorf("failed to set build environment: %s", err)
 		}
+	default:
+		// This is where we end up when no MPI is used by the container
+		containerBuildEnv, cleanup, err = getCommonContainerConfiguration(kvs, &containerMPI, sysCfg)
+		if err != nil {
+			return containerMPI.Container, fmt.Errorf("failed to set build environment: %s", err)
+		}
 	}
+
 	if cleanup != nil {
-		defer cleanup()
+		//defer cleanup()
 	}
+
 	containerMPI.Buildenv = containerBuildEnv
 
 	// Load some generic data
@@ -321,12 +347,7 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 		return containerMPI.Container, fmt.Errorf("application's package is not defined")
 	}
 	if app.info.InstallCmd == "" {
-		return containerMPI.Container, fmt.Errorf("application's compilation command is not defined")
-	}
-
-	err = containerMPI.Buildenv.Init(sysCfg)
-	if err != nil {
-		return containerMPI.Container, fmt.Errorf("failed to initialize build environment: %s", err)
+		log.Println("-> Application does not need the execution of an install command")
 	}
 
 	// Generate images
@@ -344,6 +365,11 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 	log.Printf("-> Container MPI model: %s\n", containerMPI.Container.Model)
 	log.Printf("-> Target container image: %s\n", containerMPI.Container.Path)
 
+	err = containerMPI.Buildenv.Init(sysCfg)
+	if err != nil {
+		return containerMPI.Container, fmt.Errorf("failed to initialize build environment: %s", err)
+	}
+
 	// Make sure the image already exists, if so, stop, we do not overwrite images, ever
 	if util.FileExists(containerMPI.Container.Path) {
 		fmt.Printf("%s already exists, stopping\n", containerMPI.Container.Path)
@@ -352,9 +378,17 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 
 	// Generate definition file
 	log.Println("* Generating definition file...")
-	deffileData, err := generateMPIDeffile(&app, &containerMPI, sysCfg)
-	if err != nil {
-		return containerMPI.Container, fmt.Errorf("failed to generate definition file %s: %s", containerMPI.Container.DefFile, err)
+	var deffileData deffile.DefFileData
+	if kv.GetValue(kvs, "mpi") != "" {
+		deffileData, err = generateMPIDeffile(&app, &containerMPI, sysCfg)
+		if err != nil {
+			return containerMPI.Container, fmt.Errorf("failed to generate definition file %s: %s", containerMPI.Container.DefFile, err)
+		}
+	} else {
+		deffileData, err = generateStandardDeffile(&app, &containerMPI.Container, sysCfg)
+		if err != nil {
+			return containerMPI.Container, fmt.Errorf("failed to generate definition file %s: %s", containerMPI.Container.DefFile, err)
+		}
 	}
 
 	// Backup the definition file when in debug mode

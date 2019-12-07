@@ -72,11 +72,6 @@ func setMPIInstallDir(mpiImplm string, mpiVersion string) string {
 
 // addLabels adds a set of labels to the definition file.
 func addLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
-	// Some sanity checks
-	if deffile.InternalEnv == nil {
-		return fmt.Errorf("invalid parameter(s)")
-	}
-
 	linuxDistro, distroVersion := sys.ParseDistroID(deffile.Distro)
 
 	_, err := f.WriteString("%labels\n")
@@ -94,24 +89,29 @@ func addLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 		return err
 	}
 
-	_, err = f.WriteString("\tMPI_Implementation " + deffile.MpiImplm.ID + "\n")
-	if err != nil {
-		return err
+	if deffile.MpiImplm != nil {
+		_, err = f.WriteString("\tMPI_Implementation " + deffile.MpiImplm.ID + "\n")
+		if err != nil {
+			return err
+		}
+		_, err = f.WriteString("\tMPI_Version " + deffile.MpiImplm.Version + "\n")
+		if err != nil {
+			return err
+		}
 	}
 
-	_, err = f.WriteString("\tMPI_Version " + deffile.MpiImplm.Version + "\n")
-	if err != nil {
-		return err
+	if deffile.InternalEnv != nil && deffile.InternalEnv.InstallDir != "" {
+		_, err = f.WriteString("\tMPI_Directory " + deffile.InternalEnv.InstallDir + "\n")
+		if err != nil {
+			return err
+		}
 	}
 
-	_, err = f.WriteString("\tMPI_Directory " + deffile.InternalEnv.InstallDir + "\n")
-	if err != nil {
-		return err
-	}
-
-	_, err = f.WriteString("\tModel " + deffile.Model + "\n")
-	if err != nil {
-		return err
+	if deffile.Model != "" {
+		_, err = f.WriteString("\tModel " + deffile.Model + "\n")
+		if err != nil {
+			return err
+		}
 	}
 
 	_, err = f.WriteString("\tApplication " + app.Name + "\n")
@@ -202,7 +202,7 @@ func addDistroInit(f *os.File, distro string, sysCfg *sys.Config) error {
 
 	switch distro {
 	case "ubuntu":
-		_, err := f.WriteString("\tapt-get update && apt-get install -y wget git bash gcc gfortran g++ make file software-properties-common\n\n")
+		_, err := f.WriteString("\tapt-get update && apt-get install -y dash wget git bash gcc gfortran g++ make file software-properties-common\n\n")
 		if err != nil {
 			return err
 		}
@@ -231,7 +231,7 @@ func addDistroInit(f *os.File, distro string, sysCfg *sys.Config) error {
 		if err != nil {
 			return err
 		}
-		_, err = f.WriteString("\tyum -y install wget tar bzip2 git make gcc gcc-c++ gcc-gfortran\n")
+		_, err = f.WriteString("\tyum -y install bash wget tar bzip2 git make gcc gcc-c++ gcc-gfortran\n")
 		if err != nil {
 			return err
 		}
@@ -374,31 +374,36 @@ func UpdateDeffileTemplate(data DefFileData, sysCfg *sys.Config) error {
 }
 
 func createFilesSection(f *os.File, app *app.Info, data *DefFileData, sysCfg *sys.Config) error {
-	// In the context of the bind model, we compile the application on the host and copy it over
-	if data.Model == container.BindModel {
+	_, err := f.WriteString("%files\n")
+	if err != nil {
+		return fmt.Errorf("failed to write to definition file: %s", err)
+	}
+
+	switch data.Model {
+	case container.BindModel:
+		// In the context of the bind model, we compile the application on the host and copy it over
 		// This means this is most certainly a file
-		_, err := f.WriteString("%files\n")
-		if err != nil {
-			return fmt.Errorf("failed to write to definition file: %s", err)
-		}
 		_, err = f.WriteString("\t" + app.BinPath + " /opt\n\n")
 		if err != nil {
 			return fmt.Errorf("failed to write to definition file: %s", err)
 		}
-	} else {
+	case container.HybridModel:
 		// If the application is a file that we compiled, we copy it into the container
 		if util.DetectTarballFormat(app.Source) == util.UnknownFormat {
 			// This means this is most certainly a file
-			_, err := f.WriteString("%files\n")
-			if err != nil {
-				return fmt.Errorf("failed to write to definition file: %s", err)
-			}
-
 			src := strings.Replace(app.Source, "file://", "", 1)
 			_, err = f.WriteString("\t" + src + " /opt\n\n")
 			if err != nil {
 				return fmt.Errorf("failed to write to definition file: %s", err)
 			}
+		}
+	default:
+		log.Println("It does not seem to be a MPI application, simply copying files...")
+		// This means this is most certainly a file
+		src := strings.Replace(app.Source, "file://", "", 1)
+		_, err = f.WriteString("\t" + src + " /opt\n\n")
+		if err != nil {
+			return fmt.Errorf("failed to write to definition file: %s", err)
 		}
 	}
 
@@ -620,7 +625,7 @@ func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) e
 
 	err = addLabels(f, app, data)
 	if err != nil {
-		return fmt.Errorf("failed to create the files section of the definition file: %s", err)
+		return fmt.Errorf("failed to create the labels section of the definition file: %s", err)
 	}
 
 	if util.DetectURLType(app.Source) == util.FileURL {
@@ -711,7 +716,7 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 
 	err = addLabels(f, app, data)
 	if err != nil {
-		return fmt.Errorf("failed to create the files section of the definition file: %s", err)
+		return fmt.Errorf("failed to create the labels section of the definition file: %s", err)
 	}
 
 	// This will copy the application that we compiled in the container
@@ -739,6 +744,64 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 	_, err = f.WriteString("\tmkdir -p " + data.InternalEnv.InstallDir + "\n\n")
 	if err != nil {
 		return fmt.Errorf("failed to write to definition file: %s", err)
+	}
+
+	err = addCleanUp(f, data.Distro)
+	if err != nil {
+		return fmt.Errorf("failed to add code to clean up: %s", err)
+	}
+
+	f.Close()
+
+	return nil
+}
+
+// CreateBasicDefFile creates a definition file for a given non-MPI configuration.
+func CreateBasicDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) error {
+	// Some sanity checks
+	if data.Path == "" {
+		return fmt.Errorf("invalid parameter(s)")
+	}
+
+	f, err := os.Create(data.Path)
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %s", data.Path, err)
+	}
+
+	// At this point the application already has been installed on the host.
+	// Detect the list of dependencies required for the binary that we are about to copy in
+	// the container.
+	lddMod, err := ldd.Detect()
+	if err != nil {
+		return fmt.Errorf("failed to load a workable ldd module")
+	}
+	log.Printf("* Getting dependencies for %s\n", app.BinPath)
+	pkgs := lddMod.GetPackageDependenciesForFile(app.BinPath)
+
+	err = AddBootstrap(f, data, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create the bootstrap section of the definition file: %s", err)
+	}
+
+	err = addLabels(f, app, data)
+	if err != nil {
+		return fmt.Errorf("failed to create the label section of the definition file: %s", err)
+	}
+
+	// This will copy the application that we compiled in the container
+	err = createFilesSection(f, app, data, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create the files section of the definition file: %s", err)
+	}
+
+	err = addDistroInit(f, data.Distro, sysCfg)
+	if err != nil {
+		return fmt.Errorf("failed to add the code initializing the distro: %s", err)
+	}
+
+	err = addDependencies(f, data.Distro, pkgs)
+	if err != nil {
+		return fmt.Errorf("failed to add package dependencies to the definition file: %s", err)
 	}
 
 	err = addCleanUp(f, data.Distro)

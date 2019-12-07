@@ -57,4 +57,7 @@ type Job struct {
 
 	// GetError is the function to call to gather stderr of the application based on the use of a given job manager
 	GetError GetErrorFn
+
+	// Args is a set of arguments to be used for launching the job
+	Args []string
 }
