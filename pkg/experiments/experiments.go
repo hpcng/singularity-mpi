@@ -233,7 +233,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 
 	log.Println("Running Test(s)...")
 
-	expRes, execRes = launcher.Run(&exp.App, &myHostMPICfg, &exp.HostBuildEnv, &myContainerMPICfg, &jobmgr, sysCfg)
+	expRes, execRes = launcher.Run(&exp.App, &myHostMPICfg, &exp.HostBuildEnv, &myContainerMPICfg, &jobmgr, sysCfg, nil)
 	if !expRes.Pass {
 		return false, expRes, execRes
 	}

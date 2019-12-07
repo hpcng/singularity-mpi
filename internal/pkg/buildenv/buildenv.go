@@ -378,6 +378,11 @@ func (env *Info) Install(p *SoftwarePackage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*time.Second)
 	defer cancel()
 
+	if p.InstallCmd == "" {
+		log.Println("* Application does not need installation, skipping...")
+		return nil
+	}
+
 	cmdElts := strings.Split(p.InstallCmd, " ")
 	binPath := env.lookPath(cmdElts[0])
 
@@ -412,8 +417,7 @@ func getDefaultHostMPIInstallDir(mpi *implem.Info, sysCfg *sys.Config) (string, 
 	return installDir, nil
 }
 
-// CreateDefaultHostEnvCfg returns the default configuration to install/manage MPI on the host
-func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) error {
+func createMPIHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) error {
 	/* SET THE BUILD DIRECTORY */
 
 	// The build directory is always in the scratch
@@ -425,6 +429,7 @@ func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) er
 	}
 
 	/* SET THE INSTALL DIRECTORY */
+
 	env.InstallDir, err = getDefaultHostMPIInstallDir(mpi, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to get installation directory: %s", err)
@@ -440,6 +445,43 @@ func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) er
 	}
 
 	return nil
+}
+
+func createNoMPIHostEnvCfg(env *Info, sysCfg *sys.Config) error {
+	var err error
+
+	/* SET THE BUILD DIRECTORY */
+
+	// The build directory is always in the scratch
+	env.BuildDir, err = ioutil.TempDir(sysCfg.ScratchDir, "build")
+	if err != nil {
+		return fmt.Errorf("failed to create scratch directory: %s", err)
+	}
+
+	/* SET THE INSTALL DIRECTORY */
+
+	env.InstallDir, err = ioutil.TempDir(sysCfg.ScratchDir, "install")
+	if err != nil {
+		return fmt.Errorf("failed to get installation directory: %s", err)
+	}
+
+	/* SET THE SCRATCH DIRECTORY */
+
+	env.ScratchDir, err = ioutil.TempDir(sysCfg.ScratchDir, "scratch")
+	if err != nil {
+		return fmt.Errorf("failed to initialize directory %s: %s", env.ScratchDir, err)
+	}
+
+	return nil
+}
+
+// CreateDefaultHostEnvCfg returns the default configuration to install/manage MPI on the host
+func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) error {
+	if mpi != nil {
+		return createMPIHostEnvCfg(env, mpi, sysCfg)
+	}
+
+	return createNoMPIHostEnvCfg(env, sysCfg)
 }
 
 // GetDefaultScratchDir returns the default directory to use as scratch directory

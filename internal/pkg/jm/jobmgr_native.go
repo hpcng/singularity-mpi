@@ -37,7 +37,7 @@ func NativeGetConfig() error {
 
 func getEnvPath(mpiCfg *implem.Info, env *buildenv.Info) string {
 	// Intel MPI is installing the binaries and libraries in a quite complex setup
-	if mpiCfg.ID == implem.IMPI {
+	if mpiCfg != nil && mpiCfg.ID == implem.IMPI {
 		return filepath.Join(env.InstallDir, impi.IntelInstallPathPrefix, "bin") + ":" + os.Getenv("PATH")
 	}
 
@@ -46,7 +46,7 @@ func getEnvPath(mpiCfg *implem.Info, env *buildenv.Info) string {
 
 func getEnvLDPath(mpiCfg *implem.Info, env *buildenv.Info) string {
 	// Intel MPI is installing the binaries and libraries in a quite complex setup
-	if mpiCfg.ID == implem.IMPI {
+	if mpiCfg != nil && mpiCfg.ID == implem.IMPI {
 		return filepath.Join(env.InstallDir, impi.IntelInstallPathPrefix, "lib") + ":" + os.Getenv("LD_LIBRARY_PATH")
 	}
 
@@ -81,7 +81,9 @@ func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.Sy
 	if err != nil {
 		return sycmd, fmt.Errorf("unable to get mpirun arguments: %s", err)
 	}
-	sycmd.CmdArgs = append(sycmd.CmdArgs, mpirunArgs...)
+	if len(mpirunArgs) > 0 {
+		sycmd.CmdArgs = append(sycmd.CmdArgs, mpirunArgs...)
+	}
 
 	newPath := getEnvPath(j.HostCfg, env)
 	newLDPath := getEnvLDPath(j.HostCfg, env)
@@ -98,7 +100,7 @@ func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.Sy
 	return sycmd, nil
 }
 
-// LoadNative is the function used by our job management framework to figure out if mpirun should be used directly.
+// NativeDetect is the function used by our job management framework to figure out if mpirun should be used directly.
 // The native component is the default job manager. If application, the function returns a structure with all the
 // "function pointers" to correctly use the native job manager.
 func NativeDetect() (bool, JM) {

@@ -6,7 +6,6 @@
 package mpi
 
 import (
-	"log"
 	"path/filepath"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
@@ -42,34 +41,10 @@ func GetPathToMpirun(mpiCfg *implem.Info, env *buildenv.Info) string {
 	return filepath.Join(env.InstallDir, "bin", "mpirun")
 }
 
-func getBindArguments(hostMPI *implem.Info, hostBuildenv *buildenv.Info, c *container.Config) []string {
-	var bindArgs []string
-
-	if c.Model == container.BindModel {
-		if c.MPIDir == "" {
-			log.Println("[WARN] the path to mount MPI in the container is undefined")
-		}
-		bindStr := hostBuildenv.InstallDir + ":" + c.MPIDir
-		bindArgs = append(bindArgs, bindStr)
-	}
-
-	return bindArgs
-}
-
 // GetMpirunArgs returns the arguments required by a mpirun
 func GetMpirunArgs(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, app *app.Info, syContainer *container.Config, sysCfg *sys.Config) ([]string, error) {
-	args := []string{"singularity", "exec", "--no-home", "--writable"}
-
-	if sysCfg.Nopriv {
-		args = append(args, "-u")
-	}
-
-	bindArgs := getBindArguments(myHostMPICfg, hostBuildEnv, syContainer)
-	if len(bindArgs) > 0 {
-		args = append(args, "--bind")
-		args = append(args, bindArgs...)
-	}
-
+	args := []string{"singularity", "exec"}
+	args = append(args, container.GetExecArgs(myHostMPICfg, hostBuildEnv, syContainer, sysCfg)...)
 	args = append(args, syContainer.Path, app.BinPath)
 	var extraArgs []string
 

@@ -21,11 +21,14 @@ import (
 )
 
 const (
-	// Native is the value set to JM.ID when mpirun shall be used to submit a job
+	// NativeID is the value set to JM.ID when mpirun shall be used to submit a job
 	NativeID = "native"
 
-	// Slurm is the value set to JM.ID when Slurm shall be used to submit a job
+	// SlurmID is the value set to JM.ID when Slurm shall be used to submit a job
 	SlurmID = "slurm"
+
+	// PrunID is the value set to JM.ID when prun shall be used to submit a job
+	PrunID = "prun"
 )
 
 // Loader checks whether a giv job manager is applicable or not
@@ -75,6 +78,11 @@ func Detect() JM {
 	loaded, slurmComp := SlurmDetect()
 	if loaded {
 		return slurmComp
+	}
+
+	loaded, prunComp := PrunDetect()
+	if loaded {
+		return prunComp
 	}
 
 	return comp

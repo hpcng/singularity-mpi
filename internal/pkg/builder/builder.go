@@ -229,6 +229,10 @@ func Load(pkg *implem.Info) (Builder, error) {
 	var builder Builder
 	builder.Configure = GenericConfigure
 
+	if pkg == nil {
+		return builder, nil
+	}
+
 	switch pkg.ID {
 	case implem.OMPI:
 		builder.Configure = openmpi.Configure
@@ -342,9 +346,63 @@ func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *b
 	return nil
 }
 
-// CompileAppOnHost compiles and installs a given application on the host, as well
+// CompileAppOnHost compiles and installs a given non-MPI application on the host
+func (b *Builder) CompileAppOnHost(appInfo *app.Info, buildEnv *buildenv.Info, sysCfg *sys.Config) error {
+	var s buildenv.SoftwarePackage
+	s.URL = appInfo.Source
+	s.Name = appInfo.Name
+	s.InstallCmd = appInfo.InstallCmd
+	buildEnv.BuildDir = filepath.Join(sysCfg.ScratchDir, appInfo.Name)
+	buildEnv.InstallDir = filepath.Join(sysCfg.ScratchDir, "install")
+
+	if !util.PathExists(buildEnv.BuildDir) {
+		err := util.DirInit(buildEnv.BuildDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", buildEnv.BuildDir, err)
+		}
+	}
+	if !util.PathExists(buildEnv.InstallDir) {
+		err := util.DirInit(buildEnv.InstallDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", buildEnv.InstallDir, err)
+		}
+	}
+
+	log.Printf("Build the application in %s\n", buildEnv.BuildDir)
+	log.Printf("Install the application in %s\n", buildEnv.InstallDir)
+
+	// Download the app
+	err := buildEnv.Get(&s)
+	if err != nil {
+		return fmt.Errorf("unable to get the application from %s: %s", s.URL, err)
+	}
+
+	// Unpacking the app
+	err = buildEnv.Unpack()
+	if err != nil {
+		return fmt.Errorf("unable to unpack the application %s: %s", buildEnv.SrcPath, err)
+	}
+
+	// Install the app
+	log.Println("-> Building the application...")
+	err = buildEnv.Install(&s)
+	if err != nil {
+		return fmt.Errorf("unable to install package: %s", err)
+	}
+
+	// todo: we do not have a good way to know if an app is actually install in InstallDir or
+	// if we must just use the binary in BuildDir. For now we assume that we use the binary in
+	// BuildDir.
+	appInfo.BinPath = filepath.Join(buildEnv.SrcDir, appInfo.BinName)
+	log.Printf("-> Successfully created %s\n", appInfo.BinPath)
+
+	return nil
+
+}
+
+// CompileMPIAppOnHost compiles and installs a given application on the host, as well
 // as the required MPI implementation when necessary
-func (b *Builder) CompileAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildEnv *buildenv.Info, sysCfg *sys.Config) error {
+func (b *Builder) CompileMPIAppOnHost(appInfo *app.Info, mpiCfg *mpi.Config, buildEnv *buildenv.Info, sysCfg *sys.Config) error {
 	var s buildenv.SoftwarePackage
 	s.URL = appInfo.Source
 	s.Name = appInfo.Name

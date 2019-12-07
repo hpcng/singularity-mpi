@@ -3,7 +3,10 @@
 # LICENSE.md file distributed with the sources of this project regarding your
 # rights to use or distribute this software.
 
-all: sympi syvalidate sycontainerize
+all: sympi syvalidate sycontainerize syrun
+
+syrun:
+	cd cmd/syrun; go build syrun.go
 
 syvalidate: 
 	cd cmd/syvalidate; go build syvalidate.go
@@ -32,6 +35,7 @@ clean:
 	@rm -f cmd/syvalidate/syvalidate \
 		cmd/syvalidate/main \
 		cmd/sympi/sympi \
+		cmd/syrun/syrun \
 		cmd/sympi/main \
 		cmd/sycontainerize/sycontainerize \
 		cmd/sycontainerize/main
