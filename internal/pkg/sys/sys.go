@@ -22,7 +22,7 @@ const (
 	// image containers and install MPI
 	DefaultSympiInstallDir = ".sympi"
 
-	// CmdTimetout is the maximum time we allow a command to run
+	// CmdTimeout is the maximum time we allow a command to run
 	CmdTimeout = 20
 
 	// DefaultUbuntuDistro is the default Ubuntu distribution we use

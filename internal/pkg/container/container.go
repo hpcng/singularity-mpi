@@ -21,6 +21,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
+	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
@@ -104,10 +105,6 @@ func Create(container *Config, sysCfg *sys.Config) error {
 
 	log.Printf("- Creating image %s...", container.Path)
 
-	// We only let the mpirun command run for 10 minutes max
-	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
-	defer cancel()
-
 	// The definition file is ready so we simple build the container using the Singularity command
 	if sysCfg.Debug {
 		err = checker.CheckDefFile(container.DefFile)
@@ -117,24 +114,28 @@ func Create(container *Config, sysCfg *sys.Config) error {
 	}
 
 	log.Printf("-> Using definition file %s", container.DefFile)
-	var stdout, stderr bytes.Buffer
-	var cmd *exec.Cmd
+
+	var cmd syexec.SyCmd
+	singularityVersion := sy.GetVersion(sysCfg)
+	cmd.ManifestData = []string{"Singularity version: " + singularityVersion}
+	cmd.ManifestDir = container.InstallDir
+	cmd.ExecDir = container.BuildDir
 	if sy.IsSudoCmd("build", sysCfg) {
-		log.Printf("-> Running %s %s %s %s %s\n", sysCfg.SudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
-		cmd = exec.CommandContext(ctx, sysCfg.SudoBin, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
+		cmd.BinPath = sysCfg.SudoBin
+		cmd.ManifestFileHash = []string{sysCfg.SingularityBin, container.DefFile}
+		cmd.CmdArgs = []string{sysCfg.SingularityBin, "build", container.Path, container.DefFile}
 	} else if sysCfg.Nopriv {
-		log.Printf("-> Running %s %s %s %s\n", sysCfg.SingularityBin, "build --fakeroot", container.Path, container.DefFile)
-		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "build", "--fakeroot", container.Path, container.DefFile)
+		cmd.BinPath = sysCfg.SingularityBin
+		cmd.ManifestFileHash = []string{container.DefFile}
+		cmd.CmdArgs = []string{"build", "--fakeroot", container.Path, container.DefFile}
 	} else {
-		log.Printf("-> Running %s %s %s %s\n", sysCfg.SingularityBin, "build", container.Path, container.DefFile)
-		cmd = exec.CommandContext(ctx, sysCfg.SingularityBin, "build", container.Path, container.DefFile)
+		cmd.BinPath = sysCfg.SingularityBin
+		cmd.ManifestFileHash = []string{container.DefFile}
+		cmd.CmdArgs = []string{"build", container.Path, container.DefFile}
 	}
-	cmd.Dir = container.BuildDir
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
+	res := cmd.Run()
+	if res.Err != nil {
+		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", res.Stdout, res.Stderr, res.Err)
 	}
 
 	// We make all SIF file executable to make it easier to integrate with other tools

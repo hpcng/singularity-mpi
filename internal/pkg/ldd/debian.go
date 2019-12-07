@@ -61,7 +61,7 @@ func DebianGetDependencies(output string) []string {
 
 	lines := strings.Split(output, "\n")
 
-	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*time.Minute)
 	defer cancel()
 
 	// the package of interest is the one for the current architecture

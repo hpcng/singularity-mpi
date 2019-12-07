@@ -244,7 +244,7 @@ func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error
 		}
 	}
 	singularityManifestPath := filepath.Join(env.InstallDir, "install.MANIFEST")
-	err := manifest.Create(singularityManifestPath, args)
+	err := manifest.Create(singularityManifestPath, []string{strings.Join(args, " ")})
 	if err != nil {
 		return fmt.Errorf("failed to create installation manifest: %s", err)
 	}
@@ -338,4 +338,27 @@ func GetSIFArchs(imgPath string, sysCfg *sys.Config) ([]string, error) {
 	}
 
 	return getArchsFromSIFListOutput(stdout.String()), nil
+}
+
+// GetVersion returned the version of Singularity that is currently used
+func GetVersion(sysCfg *sys.Config) string {
+	if sysCfg.SingularityBin == "" {
+		// Not a fatal error, we just log the error
+		log.Printf("path to the singularity binary is undefined")
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*time.Minute)
+	defer cancel()
+	var stdout bytes.Buffer
+	cmd := exec.CommandContext(ctx, sysCfg.SingularityBin, "version")
+	cmd.Stdout = &stdout
+	err := cmd.Run()
+	if err != nil {
+		// Not a fatal error, we just log the error
+		log.Printf("failed to execute singularity version: %s", err)
+		return ""
+	}
+
+	return stdout.String()
 }
