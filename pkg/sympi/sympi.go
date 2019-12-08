@@ -24,6 +24,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
+	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
@@ -420,6 +421,22 @@ func InstallMPIonHost(mpiDesc string, sysCfg *sys.Config) error {
 	execRes := b.InstallOnHost(&mpiCfg, &buildEnv, sysCfg)
 	if execRes.Err != nil {
 		return fmt.Errorf("failed to install MPI on the host: %s", execRes.Err)
+	}
+
+	// Create the manifest for the MPI installation we just completed
+	mpiManifest := filepath.Join(buildEnv.InstallDir, "mpi.MANIFEST")
+	if !util.PathExists(mpiManifest) {
+		mpiBin := filepath.Join(buildEnv.InstallDir, "bin", "mpiexec")
+		fileHashes := manifest.HashFiles([]string{mpiBin})
+
+		err = manifest.Create(mpiManifest, fileHashes)
+		if err != nil {
+			// This is not a fatal error, we just log the fact we cannot create the manifest
+			log.Printf("failed to create the manifest for the MPI installation: %s", err)
+		}
+	} else {
+		// This is not a fatal error, we just log that the manifest already exists
+		log.Println("Manifest for MPI installation already exists, skipping...")
 	}
 
 	return nil
