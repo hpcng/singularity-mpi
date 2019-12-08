@@ -21,6 +21,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -52,8 +53,12 @@ func getSingularityInstalls(basedir string, entries []os.FileInfo) ([]string, er
 		}
 		if matched {
 			// Now we check if we have an install manifest for more information
-			installManifest := filepath.Join(basedir, entry.Name(), "install.MANIFEST")
+			installManifest := filepath.Join(basedir, entry.Name(), "mconfig.MANIFEST")
 			availVersion := strings.Replace(entry.Name(), sys.SingularityInstallDirPrefix, "", -1)
+
+			if !util.PathExists(installManifest) {
+				installManifest = filepath.Join(basedir, entry.Name(), "install.MANIFEST")
+			}
 			if util.PathExists(installManifest) {
 				data, err := ioutil.ReadFile(installManifest)
 				// Errors are not fatal, it means we just do not extract more information
@@ -347,6 +352,16 @@ func installSingularity(id string, params []string, sysCfg *sys.Config) error {
 		return fmt.Errorf("failed to install %s: %s", id, execRes.Err)
 	}
 
+	// Create manifest for the Singularity binary
+	syBin := filepath.Join(buildEnv.InstallDir, "bin", "singularity")
+	manifestPath := filepath.Join(buildEnv.InstallDir, "singularity.MANIFEST")
+	hashes := manifest.HashFiles([]string{syBin})
+	err = manifest.Create(manifestPath, hashes)
+	if err != nil {
+		// This is not an error, we just log the error
+		log.Printf("failed to create the MANIFEST for %s\n", id)
+	}
+
 	return nil
 }
 
@@ -579,7 +594,7 @@ func main() {
 	if *run != "" {
 		err := sympi.RunContainer(*run, nil, &sysCfg)
 		if err != nil {
-			fmt.Printf("Impossible to run container %s: %s", *run, err)
+			fmt.Printf("Impossible to run container %s: %s\n", *run, err)
 			os.Exit(1)
 		}
 

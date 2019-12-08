@@ -25,6 +25,7 @@ import (
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
+	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
@@ -138,17 +139,17 @@ func (env *Info) RunMake(priv bool, args []string, stage string) error {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
-	var stdout, stderr bytes.Buffer
-
+	var makeCmd syexec.SyCmd
+	makeCmd.ManifestName = "make"
 	if stage != "" {
 		args = append(args, stage)
+		makeCmd.ManifestName = strings.Join(args, "_")
 	}
 
 	args = append([]string{"-j4"}, args...)
 	logMsg := "make " + strings.Join(args, " ")
-	var makeCmd *exec.Cmd
 	if !priv {
-		makeCmd = exec.Command("make", args...)
+		makeCmd.BinPath = "make"
 	} else {
 		sudoBin, err := exec.LookPath("sudo")
 		logMsg = sudoBin + " " + logMsg
@@ -156,18 +157,17 @@ func (env *Info) RunMake(priv bool, args []string, stage string) error {
 			return fmt.Errorf("failed to find the sudo binary: %s", err)
 		}
 		args = append([]string{"make"}, args...)
-		makeCmd = exec.Command(sudoBin, args...)
+		makeCmd.BinPath = sudoBin
 	}
+	makeCmd.CmdArgs = args
 	log.Printf("* Executing (from %s): %s", env.SrcDir, logMsg)
 	if len(env.Env) > 0 {
 		makeCmd.Env = env.Env
 	}
-	makeCmd.Dir = env.SrcDir
-	makeCmd.Stderr = &stderr
-	makeCmd.Stdout = &stdout
-	err := makeCmd.Run()
-	if err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+	makeCmd.ExecDir = env.SrcDir
+	res := makeCmd.Run()
+	if res.Err != nil {
+		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)
 	}
 
 	return nil

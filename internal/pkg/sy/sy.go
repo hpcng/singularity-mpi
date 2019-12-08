@@ -23,6 +23,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
+	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
@@ -243,26 +244,22 @@ func Configure(env *buildenv.Info, sysCfg *sys.Config, extraArgs []string) error
 			return fmt.Errorf("failed to create %s: %s", env.InstallDir, err)
 		}
 	}
-	singularityManifestPath := filepath.Join(env.InstallDir, "install.MANIFEST")
-	err := manifest.Create(singularityManifestPath, []string{strings.Join(args, " ")})
-	if err != nil {
-		return fmt.Errorf("failed to create installation manifest: %s", err)
-	}
 
 	// Run mconfig
+	var sycmd syexec.SyCmd
+	sycmd.Env = updateEnviron(env)
+	sycmd.ExecDir = env.SrcDir
+	sycmd.ManifestDir = env.InstallDir
+	sycmd.ManifestName = "mconfig"
+	sycmd.BinPath = "./mconfig"
+	sycmd.CmdArgs = args
+	sycmd.ManifestData = []string{strings.Join(args, " ")}
 	log.Printf("-> Executing from %s: ./mconfig %s\n", env.SrcDir, strings.Join(args, " "))
-	newEnv := updateEnviron(env)
-	env.Env = newEnv
-	log.Printf("-> Using env: %s\n", strings.Join(newEnv, "\n"))
-	var stderr bytes.Buffer
-	cmd = exec.CommandContext(ctx, "./mconfig", args...)
-	cmd.Dir = env.SrcDir
-	cmd.Env = newEnv
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stdout
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to run mconfig: %s (stderr: %s; stdout: %s)", err, stderr.String(), stdout.String())
+	log.Printf("-> Using env: %s\n", strings.Join(sycmd.Env, "\n"))
+
+	res := sycmd.Run()
+	if res.Err != nil {
+		return fmt.Errorf("failed to run mconfig: %s (stderr: %s; stdout: %s)", res.Err, res.Stderr, res.Stdout)
 	}
 
 	return nil
@@ -361,4 +358,41 @@ func GetVersion(sysCfg *sys.Config) string {
 	}
 
 	return stdout.String()
+}
+
+// CheckIntegrity checks if the installation of Singularity has been compromised
+func CheckIntegrity(sysCfg *sys.Config) error {
+	log.Println("* Checking intergrity of Singularity...")
+
+	if sysCfg.SingularityBin == "" {
+		return fmt.Errorf("singularity bianry cannot be found")
+	}
+
+	basedir := filepath.Dir(sysCfg.SingularityBin)
+	basedir = filepath.Join(basedir, "..")
+	installManifest := filepath.Join(basedir, "singularity.MANIFEST")
+
+	if util.FileExists(installManifest) {
+		data, err := ioutil.ReadFile(installManifest)
+		if err != nil {
+			log.Printf("Manifest %s does not exist", installManifest)
+			return nil // This is not a fatal error
+		}
+		content := string(data)
+		lines := strings.Split(content, "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "bin/singularity: ") {
+				curFileHash := manifest.HashFiles([]string{sysCfg.SingularityBin})
+				if curFileHash[0] != line {
+					hashRecordeed := strings.Split(line, ": ")[1]
+					actualHash := strings.Split(curFileHash[0], ": ")[1]
+					return fmt.Errorf("hashes differ (record: %s; actual: %s)", hashRecordeed, actualHash)
+				}
+			}
+		}
+	} else {
+		log.Printf("No manifest in %s, skipping...\n", basedir)
+	}
+
+	return nil
 }
