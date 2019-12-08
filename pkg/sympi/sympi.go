@@ -25,6 +25,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
+	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
@@ -275,8 +276,10 @@ func RunContainer(containerDesc string, args []string, sysCfg *sys.Config) error
 	}
 
 	// Inspect the image and extract the metadata
-	if sysCfg.SingularityBin == "" {
-		log.Fatalf("singularity bin not defined")
+	err = sy.CheckIntegrity(sysCfg)
+	if err != nil {
+		fmt.Printf("[WARNING] Your Singularity installation seems to be corrupted: %s\n", err)
+		return fmt.Errorf("Compromised Singularity installation")
 	}
 
 	fmt.Printf("Analyzing %s to figure out the correct configuration for execution...\n", imgPath)

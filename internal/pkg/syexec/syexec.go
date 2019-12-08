@@ -8,11 +8,7 @@ package syexec
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"io"
 	"log"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -59,6 +55,9 @@ type SyCmd struct {
 	// CancelFn is the function to cancel the command to submit a job
 	CancelFn context.CancelFunc
 
+	// ManifestName is the name of the manifest, it will default to "exec.MANIFEST" if not defined
+	ManifestName string
+
 	// ManifestDir is the directory where to create the manifest related to the command execution
 	ManifestDir string
 
@@ -67,33 +66,6 @@ type SyCmd struct {
 
 	// ManifestFileHash is a list of absolute path to files for which we want a hash in the manifest
 	ManifestFileHash []string
-}
-
-func getFileHash(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-
-	hasher := sha256.New()
-	_, err = io.Copy(hasher, f)
-	if err != nil {
-		return ""
-	}
-
-	return hex.EncodeToString(hasher.Sum(nil))
-}
-
-func hashFiles(files []string) []string {
-	var hashData []string
-
-	for _, file := range files {
-		hash := getFileHash(file)
-		hashData = append(hashData, file+": "+hash)
-	}
-
-	return hashData
 }
 
 // Run executes a syexec command and creates the appropriate manifest (when possible)
@@ -127,16 +99,19 @@ func (c *SyCmd) Run() Result {
 
 	if c.ManifestDir != "" {
 		path := filepath.Join(c.ManifestDir, "exec.MANIFEST")
+		if c.ManifestName != "" {
+			path = filepath.Join(c.ManifestDir, c.ManifestName+".MANIFEST")
+		}
 		if !util.FileExists(path) {
 			currentTime := time.Now()
-			data := []string{"Command: " + c.BinPath + strings.Join(c.CmdArgs, " ") + "\n"}
+			data := []string{"Command: " + c.BinPath + " " + strings.Join(c.CmdArgs, " ") + "\n"}
 			data = append(data, "Execution path: "+c.ExecDir)
 			data = append(data, "Execution time: "+currentTime.Format("2006-01-02 15:04:05"))
 			data = append(data, c.ManifestData...)
 
 			filesToHash := []string{c.BinPath} // we always get the fingerprint of the binary we execute
 			filesToHash = append(filesToHash, c.ManifestFileHash...)
-			hashData := hashFiles(filesToHash)
+			hashData := manifest.HashFiles(filesToHash)
 			data = append(data, hashData...)
 
 			err := manifest.Create(path, data)
