@@ -98,6 +98,14 @@ func (c *SyCmd) Run() Result {
 	}
 
 	if c.ManifestDir != "" {
+		if !util.PathExists(c.ManifestDir) {
+			err := util.DirInit(c.ManifestDir)
+			if err != nil {
+				// This is not a fatal error, we log it and exit
+				log.Printf("failed to create destination directory for the manifest: %s", err)
+				return res
+			}
+		}
 		path := filepath.Join(c.ManifestDir, "exec.MANIFEST")
 		if c.ManifestName != "" {
 			path = filepath.Join(c.ManifestDir, c.ManifestName+".MANIFEST")
@@ -109,6 +117,10 @@ func (c *SyCmd) Run() Result {
 			data = append(data, "Execution time: "+currentTime.Format("2006-01-02 15:04:05"))
 			data = append(data, c.ManifestData...)
 
+			// We transform relative paths into absolute path
+			if c.BinPath[0] == '.' && c.BinPath[1] == '/' {
+				c.BinPath = filepath.Join(c.ExecDir, c.BinPath[2:])
+			}
 			filesToHash := []string{c.BinPath} // we always get the fingerprint of the binary we execute
 			filesToHash = append(filesToHash, c.ManifestFileHash...)
 			hashData := manifest.HashFiles(filesToHash)
