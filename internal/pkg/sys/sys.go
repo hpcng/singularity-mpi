@@ -23,7 +23,7 @@ const (
 	DefaultSympiInstallDir = ".sympi"
 
 	// CmdTimeout is the maximum time we allow a command to run
-	CmdTimeout = 20
+	CmdTimeout = 30
 
 	// DefaultUbuntuDistro is the default Ubuntu distribution we use
 	DefaultUbuntuDistro = "disco"
@@ -183,5 +183,14 @@ func CompatibleArch(list []string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// IsPersistent checks whether the system is setup for persistent installs or not
+func IsPersistent(sysCfg *Config) bool {
+	if sysCfg != nil && sysCfg.Persistent != "" {
+		return true
+	}
+
 	return false
 }
