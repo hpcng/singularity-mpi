@@ -31,7 +31,7 @@ const (
 	KeyPassphrase = "SY_KEY_PASSPHRASE"
 
 	// KeyIndex is the index of the key to use to sign images
-	KeyIndex = "SY_KEY_INDEX"
+	KeyIndexEnvVar = "SY_KEY_INDEX"
 
 	// HybridModel is the identifier used to identify the hybrid model
 	HybridModel = "hybrid"
@@ -40,7 +40,7 @@ const (
 	BindModel = "bind"
 
 	// defaultExecArgs
-	defaultExecArgs = "--no-home --writable"
+	defaultExecArgs = "--no-home"
 )
 
 // Config is a structure representing a container
@@ -79,7 +79,7 @@ type Config struct {
 	Binds []string
 }
 
-// CreateContainer creates a container based on a MPI configuration
+// Create builds a container based on a MPI configuration
 func Create(container *Config, sysCfg *sys.Config) error {
 	var err error
 
@@ -95,6 +95,13 @@ func Create(container *Config, sysCfg *sys.Config) error {
 		}
 	}
 
+	// Check integrity of the installation of Singularity
+	err = sy.CheckIntegrity(sysCfg)
+	if err != nil {
+		return fmt.Errorf("Singularity installation has been compromised: %s", err)
+	}
+
+	// Prepare the configuration of the container
 	if container.Name == "" {
 		container.Name = "singularity_mpi.sif"
 	}
@@ -117,20 +124,20 @@ func Create(container *Config, sysCfg *sys.Config) error {
 
 	var cmd syexec.SyCmd
 	singularityVersion := sy.GetVersion(sysCfg)
+	cmd.ManifestName = "build"
 	cmd.ManifestData = []string{"Singularity version: " + singularityVersion}
 	cmd.ManifestDir = container.InstallDir
+	cmd.ManifestFileHash = []string{container.DefFile, container.Path}
 	cmd.ExecDir = container.BuildDir
-	if sy.IsSudoCmd("build", sysCfg) {
-		cmd.BinPath = sysCfg.SudoBin
-		cmd.ManifestFileHash = []string{sysCfg.SingularityBin, container.DefFile}
-		cmd.CmdArgs = []string{sysCfg.SingularityBin, "build", container.Path, container.DefFile}
-	} else if sysCfg.Nopriv {
+	if sysCfg.Nopriv {
 		cmd.BinPath = sysCfg.SingularityBin
-		cmd.ManifestFileHash = []string{container.DefFile}
 		cmd.CmdArgs = []string{"build", "--fakeroot", container.Path, container.DefFile}
+	} else if sy.IsSudoCmd("build", sysCfg) {
+		cmd.BinPath = sysCfg.SudoBin
+		cmd.ManifestFileHash = append(cmd.ManifestFileHash, sysCfg.SingularityBin)
+		cmd.CmdArgs = []string{sysCfg.SingularityBin, "build", container.Path, container.DefFile}
 	} else {
 		cmd.BinPath = sysCfg.SingularityBin
-		cmd.ManifestFileHash = []string{container.DefFile}
 		cmd.CmdArgs = []string{"build", container.Path, container.DefFile}
 	}
 	res := cmd.Run()
@@ -168,13 +175,19 @@ func PullContainerImage(cfg *Config, mpiImplm *implem.Info, sysCfg *sys.Config, 
 		}
 	}
 
+	// Check integrity of the installation of Singularity
+	err := sy.CheckIntegrity(sysCfg)
+	if err != nil {
+		return fmt.Errorf("Singularity installation has been compromised: %s", err)
+	}
+
 	log.Println("* Pulling container with the following MPI configuration *")
 	log.Println("-> Build container in", cfg.BuildDir)
 	log.Println("-> MPI implementation:", mpiImplm.ID)
 	log.Println("-> MPI version:", mpiImplm.Version)
 	log.Println("-> Image URL:", cfg.URL)
 
-	err := Pull(cfg, sysCfg)
+	err = Pull(cfg, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to pull image: %s", err)
 	}
@@ -196,6 +209,12 @@ func Pull(containerInfo *Config, sysCfg *sys.Config) error {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
+	// Check integrity of the installation of Singularity
+	err := sy.CheckIntegrity(sysCfg)
+	if err != nil {
+		return fmt.Errorf("Singularity installation has been compromised: %s", err)
+	}
+
 	if sysCfg.Persistent != "" && util.PathExists(containerInfo.Path) {
 		log.Printf("* Persistent mode, %s already available, skipping...", containerInfo.Path)
 		return nil
@@ -208,7 +227,7 @@ func Pull(containerInfo *Config, sysCfg *sys.Config) error {
 	cmd.Dir = containerInfo.BuildDir
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
 	}
@@ -220,13 +239,19 @@ func Pull(containerInfo *Config, sysCfg *sys.Config) error {
 func Sign(container *Config, sysCfg *sys.Config) error {
 	var stdout, stderr bytes.Buffer
 
+	// Check integrity of the installation of Singularity
+	err := sy.CheckIntegrity(sysCfg)
+	if err != nil {
+		return fmt.Errorf("Singularity installation has been compromised: %s", err)
+	}
+
 	log.Printf("-> Signing container (%s)", container.Path)
 	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
 	defer cancel()
 
 	indexIdx := "0"
-	if os.Getenv(KeyIndex) != "" {
-		indexIdx = os.Getenv(KeyIndex)
+	if os.Getenv(KeyIndexEnvVar) != "" {
+		indexIdx = os.Getenv(KeyIndexEnvVar)
 	}
 
 	var cmd *exec.Cmd
@@ -264,6 +289,11 @@ func Sign(container *Config, sysCfg *sys.Config) error {
 func Upload(containerInfo *Config, sysCfg *sys.Config) error {
 	var stdout, stderr bytes.Buffer
 
+	err := sy.CheckIntegrity(sysCfg)
+	if err != nil {
+		return fmt.Errorf("Singularity installation has been compromised: %s", err)
+	}
+
 	log.Printf("-> Uploading container %s to %s", containerInfo.Path, sysCfg.Registry)
 	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
 	defer cancel()
@@ -277,7 +307,7 @@ func Upload(containerInfo *Config, sysCfg *sys.Config) error {
 	cmd.Dir = containerInfo.BuildDir
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
 	}
@@ -324,6 +354,11 @@ func GetMetadata(imgPath string, sysCfg *sys.Config) (Config, implem.Info, error
 	var metadata Config
 	var mpiCfg implem.Info
 
+	err := sy.CheckIntegrity(sysCfg)
+	if err != nil {
+		return metadata, mpiCfg, fmt.Errorf("Singularity installation has been compromised: %s", err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*2*time.Minute)
 	defer cancel()
 
@@ -338,7 +373,7 @@ func GetMetadata(imgPath string, sysCfg *sys.Config) (Config, implem.Info, error
 	}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return metadata, mpiCfg, fmt.Errorf("failed to execute command - stdout: %s; stderr: %s; err: %s", stdout.String(), stderr.String(), err)
 	}
