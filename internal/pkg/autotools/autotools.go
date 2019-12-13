@@ -6,12 +6,12 @@
 package autotools
 
 import (
-	"bytes"
 	"fmt"
 	"log"
-	"os/exec"
 	"path/filepath"
+	"strings"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
@@ -45,17 +45,18 @@ func Configure(cfg *Config) error {
 	}
 
 	log.Printf("-> Running 'configure': %s %s\n", configurePath, cmdArgs)
-	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(configurePath)
+	var cmd syexec.SyCmd
+	cmd.BinPath = "./configure"
+	cmd.ManifestName = "configure"
+	cmd.ManifestDir = cfg.Install
 	if len(cmdArgs) > 0 {
-		cmd = exec.Command(configurePath, cmdArgs...)
+		cmd.ManifestData = []string{strings.Join(cmdArgs, " ")}
+		cmd.CmdArgs = cmdArgs
 	}
-	cmd.Dir = cfg.Source
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stdout
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+	cmd.ExecDir = cfg.Source
+	res := cmd.Run()
+	if res.Err != nil {
+		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)
 	}
 
 	return nil
