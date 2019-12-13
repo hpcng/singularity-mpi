@@ -12,7 +12,6 @@ package buildenv
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -21,9 +20,9 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -375,28 +374,25 @@ func (env *Info) lookPath(bin string) string {
 
 // Install is a generic function to install a software
 func (env *Info) Install(p *SoftwarePackage) error {
-	ctx, cancel := context.WithTimeout(context.Background(), sys.CmdTimeout*time.Second)
-	defer cancel()
-
 	if p.InstallCmd == "" {
 		log.Println("* Application does not need installation, skipping...")
 		return nil
 	}
 
+	var cmd syexec.SyCmd
 	cmdElts := strings.Split(p.InstallCmd, " ")
-	binPath := env.lookPath(cmdElts[0])
-
-	log.Printf("Executing from %s: %s %s.", env.SrcDir, binPath, strings.Join(cmdElts[1:], " "))
-	log.Printf("Environment: %s\n", strings.Join(env.Env, "\n"))
-	cmd := exec.CommandContext(ctx, binPath, cmdElts[1:]...)
-	cmd.Dir = env.SrcDir
+	cmd.BinPath = env.lookPath(cmdElts[0])
+	cmd.CmdArgs = cmdElts[1:]
+	cmd.ExecDir = env.SrcDir
+	cmd.ManifestName = "install"
+	cmd.ManifestDir = env.InstallDir
 	cmd.Env = env.Env
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to install %s: %s; stdout: %s; stderr: %s", p.Name, err, stdout.String(), stderr.String())
+
+	log.Printf("Executing from %s: %s %s.", env.SrcDir, cmd.BinPath, strings.Join(cmdElts[1:], " "))
+	log.Printf("Environment: %s\n", strings.Join(env.Env, "\n"))
+	res := cmd.Run()
+	if res.Err != nil {
+		return fmt.Errorf("failed to install %s: %s; stdout: %s; stderr: %s", p.Name, res.Err, res.Stdout, res.Stderr)
 	}
 
 	return nil
@@ -482,6 +478,79 @@ func CreateDefaultHostEnvCfg(env *Info, mpi *implem.Info, sysCfg *sys.Config) er
 	}
 
 	return createNoMPIHostEnvCfg(env, sysCfg)
+}
+
+func createContainerNonpersistentMPIBuildEnv(containerBuildEnv *Info, sysCfg *sys.Config) (func(), error) {
+	var err error
+	var cleanup func()
+
+	// If we do not integrate with the sympi (i.e., no persistent mode), all subdirectories
+	// in the system wide scratch directory or, if that directory is not defined, in a new
+	// temporary directory. In any case, the temporary directory will NOT
+	// be deleted since it will have both the container image and the definition file. The
+	// subdirectories in the temporary directory should be deleted automatically.
+	if sysCfg.ScratchDir != "" {
+		containerBuildEnv.ScratchDir = sysCfg.ScratchDir
+	} else {
+		containerBuildEnv.ScratchDir, err = ioutil.TempDir("", "")
+		if err != nil {
+			return cleanup, fmt.Errorf("failed to create temporary directory: %s", err)
+		}
+	}
+	containerBuildEnv.BuildDir = filepath.Join(containerBuildEnv.ScratchDir, "container", "build")
+	containerBuildEnv.InstallDir = filepath.Join(containerBuildEnv.ScratchDir, "install")
+
+	cleanup = func() {
+		err := os.RemoveAll(containerBuildEnv.ScratchDir)
+		if err != nil {
+			log.Printf("failed to cleanup %s: %s", containerBuildEnv.ScratchDir, err)
+		}
+		err = os.RemoveAll(containerBuildEnv.BuildDir)
+		if err != nil {
+			log.Printf("failed to cleanup %s: %s", containerBuildEnv.BuildDir, err)
+		}
+		err = os.RemoveAll(containerBuildEnv.InstallDir)
+		if err != nil {
+			log.Printf("failed to cleanup %s: %s", containerBuildEnv.InstallDir, err)
+		}
+	}
+
+	return cleanup, err
+}
+
+func createContainerPersistentMPIBuildEnv(containerBuildEnv *Info, kvs []kv.KV, sysCfg *sys.Config) (func(), error) {
+	var err error
+	var cleanup func()
+
+	containerBuildEnv.ScratchDir = filepath.Join(sysCfg.Persistent, "scratch_"+kv.GetValue(kvs, "app_name"))
+	containerBuildEnv.BuildDir = filepath.Join(sysCfg.Persistent, "build_"+kv.GetValue(kvs, "app_name"))
+	containerBuildEnv.InstallDir = filepath.Join(sysCfg.Persistent, sys.ContainerInstallDirPrefix+kv.GetValue(kvs, "app_name"))
+
+	cleanup = func() {
+		err := os.RemoveAll(containerBuildEnv.ScratchDir)
+		if err != nil {
+			log.Printf("failed to cleanup %s: %s", containerBuildEnv.ScratchDir, err)
+		}
+		err = os.RemoveAll(containerBuildEnv.BuildDir)
+		if err != nil {
+			log.Printf("failed to cleanup %s: %s", containerBuildEnv.BuildDir, err)
+		}
+	}
+
+	return cleanup, err
+}
+
+func CreateDefaultContainerEnvCfg(containerBuildEnv *Info, kvs []kv.KV, sysCfg *sys.Config) (func(), error) {
+	var err error
+	var cleanup func()
+
+	if sys.IsPersistent(sysCfg) {
+		cleanup, err = createContainerPersistentMPIBuildEnv(containerBuildEnv, kvs, sysCfg)
+	} else {
+		cleanup, err = createContainerNonpersistentMPIBuildEnv(containerBuildEnv, sysCfg)
+	}
+
+	return cleanup, err
 }
 
 // GetDefaultScratchDir returns the default directory to use as scratch directory
