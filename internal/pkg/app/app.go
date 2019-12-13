@@ -21,4 +21,10 @@ type Info struct {
 
 	// InstallCmd is the command to use to install the application
 	InstallCmd string
+
+	// ExpectedRankOutput specifies what is the expected output from EACH rank
+	// A few keyword can be used for runtime-specific parameters
+	// Use '#NP' to specify the job size
+	// Use '#RANK' to specify the rank number
+	ExpectedRankOutput string
 }

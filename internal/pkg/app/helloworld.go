@@ -19,5 +19,6 @@ func GetHelloworld(sysCfg *sys.Config) Info {
 	hw.Name = "helloworld"
 	hw.BinPath = "/opt/mpitest"
 	hw.Source = "file://" + filepath.Join(sysCfg.TemplateDir, "mpitest.c")
+	hw.ExpectedRankOutput = "Hello, I am rank #RANK/#NP"
 	return hw
 }
