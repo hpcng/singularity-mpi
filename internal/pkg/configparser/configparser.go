@@ -9,16 +9,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/gvallee/kv/pkg/kv"
 )
 
 // Config represents the configuration of the tests to run
 type Config struct {
-	filename  string
+	filename string
 	// MPIImplem provides the MPI implementation details
 	MPIImplem string
 	// MpiMap stores the URL to download a specific version, the key being the version
-	MpiMap    map[string]string 
+	MpiMap map[string]string
 }
 
 func detectOpenMPIVersion(line string) string {

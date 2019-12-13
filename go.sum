@@ -1,0 +1,4 @@
+github.com/gvallee/go_util v1.0.0 h1:N1Op0Nscjv0mht2NJfGfMDe+2+ptfH1lKseb52jQkbY=
+github.com/gvallee/go_util v1.0.0/go.mod h1:fTexpwdH/n05Ziu0TXJIQsr7E+46QpBxNdeOOsyC0/s=
+github.com/gvallee/kv v1.0.0 h1:QE3Ua8JewroqJqc+J9RWtL7KUu7rQmfLfxlBVY5t1ko=
+github.com/gvallee/kv v1.0.0/go.mod h1:sfSclfFfLV+Y+9e9FayIbBUOtvbt1779S6q52bSSU5E=

@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gvallee/go_util/pkg/util"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 // Config represents the configuration of the autotools-compliant software to configure/compile/install
