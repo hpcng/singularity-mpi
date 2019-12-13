@@ -168,11 +168,11 @@ func generateJobScript(j *job.Job, env *buildenv.Info, sysCfg *sys.Config, kvs [
 	}
 
 	if j.NNodes > 0 {
-		scriptText += slurm.ScriptCmdPrefix + " --nodes=" + strconv.FormatInt(j.NNodes, 10) + "\n"
+		scriptText += slurm.ScriptCmdPrefix + " --nodes=" + strconv.Itoa(j.NNodes) + "\n"
 	}
 
 	if j.NP > 0 {
-		scriptText += slurm.ScriptCmdPrefix + " --ntasks=" + strconv.FormatInt(j.NP, 10) + "\n"
+		scriptText += slurm.ScriptCmdPrefix + " --ntasks=" + strconv.Itoa(j.NP) + "\n"
 	}
 
 	scriptText += slurm.ScriptCmdPrefix + " --error=" + getJobErrorFilePath(j, sysCfg) + "\n"

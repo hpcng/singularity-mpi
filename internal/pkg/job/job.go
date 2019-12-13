@@ -26,10 +26,10 @@ type GetErrorFn func(*Job, *sys.Config) string
 // Job represents a job
 type Job struct {
 	// NP is the number of ranks
-	NP int64
+	NP int
 
 	// NNodes is the number of nodes
-	NNodes int64
+	NNodes int
 
 	// CleanUp is the function to call once the job is completed to clean the system
 	CleanUp CleanUpFn

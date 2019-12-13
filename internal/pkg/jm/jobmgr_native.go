@@ -71,10 +71,14 @@ func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.Sy
 		return sycmd, fmt.Errorf("application binary is undefined")
 	}
 
-	sycmd.BinPath = mpi.GetPathToMpirun(j.HostCfg, env)
+	var err error
+	sycmd.BinPath, err = mpi.GetPathToMpirun(j.HostCfg, env)
+	if err != nil {
+		return sycmd, err
+	}
 	if j.NP > 0 {
 		sycmd.CmdArgs = append(sycmd.CmdArgs, "-np")
-		sycmd.CmdArgs = append(sycmd.CmdArgs, strconv.FormatInt(j.NP, 10))
+		sycmd.CmdArgs = append(sycmd.CmdArgs, strconv.Itoa(j.NP))
 	}
 
 	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, env, &j.App, j.Container, sysCfg)
