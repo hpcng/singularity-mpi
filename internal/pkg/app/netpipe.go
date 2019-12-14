@@ -17,5 +17,6 @@ func GetNetpipe(sysCfg *sys.Config) Info {
 	netpipe.BinPath = "/opt/NetPIPE-5.1.4/NPmpi"
 	netpipe.Source = "http://netpipe.cs.ksu.edu/download/NetPIPE-5.1.4.tar.gz"
 	netpipe.InstallCmd = "make mpi"
+	netpipe.ExpectedNote = "max bandwidth: "
 	return netpipe
 }

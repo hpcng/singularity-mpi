@@ -27,4 +27,12 @@ type Info struct {
 	// Use '#NP' to specify the job size
 	// Use '#RANK' to specify the rank number
 	ExpectedRankOutput string
+
+	// ExpectedNote specifies what is the expected note from an application
+	//
+	// A note is the result of an application-specific parsing/analysis of the
+	// application's output that is specific to this framework. For instance,
+	// for netpipe, the expected note is something like 'max bandwidth: 44.773 Gbps; latency: 50.609 nsecs'
+	// todo: should support regexp here
+	ExpectedNote string
 }
