@@ -45,6 +45,8 @@ const (
 
 	// ContainerInstallDirPrefix is the default prefix for the directory name where an MPI-based container is stored
 	ContainerInstallDirPrefix = "mpi_container_"
+
+	confFilePrefix = "sympi_"
 )
 
 // SetConfigFn is a "function pointer" that lets us store the configuration of a given job manager
@@ -193,4 +195,18 @@ func IsPersistent(sysCfg *Config) bool {
 	}
 
 	return false
+}
+
+// GetMPIConfigFileName return the name of the configuration file for a specific implementation of MPI
+func GetMPIConfigFileName(mpi string) string {
+	switch mpi {
+	case "openmpi":
+		return confFilePrefix + "openmpi.conf"
+	case "mpich":
+		return confFilePrefix + "mpich.conf"
+	case "intel":
+		return confFilePrefix + "intel.conf"
+	default:
+		return ""
+	}
 }

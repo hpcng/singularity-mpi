@@ -18,6 +18,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
+	"github.com/sylabs/singularity-mpi/internal/pkg/distro"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/ldd"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
@@ -50,8 +51,8 @@ type DefFileData struct {
 	// Path is the path to the definition file
 	Path string
 
-	// Distro is the linux distribution identifier to be used in the definition file
-	Distro string
+	// DistroID is the linux distribution identifier to be used in the definition file
+	DistroID distro.ID
 
 	// MpiImplm is the MPI implementation ID (e.g., OMPI, MPICH)
 	MpiImplm *implem.Info
@@ -72,19 +73,17 @@ func setMPIInstallDir(mpiImplm string, mpiVersion string) string {
 
 // addLabels adds a set of labels to the definition file.
 func addLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
-	linuxDistro, distroVersion := sys.ParseDistroID(deffile.Distro)
-
 	_, err := f.WriteString("%labels\n")
 	if err != nil {
 		return err
 	}
 
-	_, err = f.WriteString("\tLinux_distribution " + linuxDistro + "\n")
+	_, err = f.WriteString("\tLinux_distribution " + deffile.DistroID.Name + "\n")
 	if err != nil {
 		return err
 	}
 
-	_, err = f.WriteString("\tLinux_version " + distroVersion + "\n")
+	_, err = f.WriteString("\tLinux_version " + deffile.DistroID.Version + "\n")
 	if err != nil {
 		return err
 	}
@@ -146,7 +145,7 @@ func addLabels(f *os.File, app *app.Info, deffile *DefFileData) error {
 }
 
 func addDockerBootstrap(f *os.File, deffile *DefFileData) error {
-	_, err := f.WriteString("Bootstrap: docker\nFrom: " + deffile.Distro + "\n\n")
+	_, err := f.WriteString("Bootstrap: docker\nFrom: " + deffile.DistroID.Name + "\n\n")
 	if err != nil {
 		return fmt.Errorf("failed to add bootstrap section to definition file: %s", err)
 	}
@@ -155,14 +154,7 @@ func addDockerBootstrap(f *os.File, deffile *DefFileData) error {
 }
 
 func addYumBootstrap(f *os.File, deffile *DefFileData) error {
-	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the version
-	if !strings.Contains(deffile.Distro, ":") {
-		return fmt.Errorf("failed to parse distribution identifier %s", deffile.Distro)
-	}
-	tokens := strings.Split(deffile.Distro, ":")
-	version := tokens[1]
-
-	_, err := f.WriteString("Bootstrap: yum\nOSVersion: " + version + "\nMirrorURL: http://mirror.centos.org/centos-%{OSVERSION}/%{OSVERSION}/os/$basearch/\nInclude: yum\n\n")
+	_, err := f.WriteString("Bootstrap: yum\nOSVersion: " + deffile.DistroID.Version + "\nMirrorURL: http://mirror.centos.org/centos-%{OSVERSION}/%{OSVERSION}/os/$basearch/\nInclude: yum\n\n")
 	if err != nil {
 		return fmt.Errorf("failed to add bootstrap section to definition file: %s", err)
 	}
@@ -171,14 +163,8 @@ func addYumBootstrap(f *os.File, deffile *DefFileData) error {
 }
 
 func addDebootstrapBootstrap(f *os.File, deffile *DefFileData) error {
-	distro := deffile.Distro
-	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the version
-	if strings.Contains(distro, ":") {
-		tokens := strings.Split(distro, ":")
-		distro = tokens[1]
-	}
 	// todo: do not hardcode the mirror URL
-	_, err := f.WriteString("Bootstrap: debootstrap\nOSVersion: " + distro + "\nMirrorURL: http://us.archive.ubuntu.com/ubuntu/\n\n")
+	_, err := f.WriteString("Bootstrap: debootstrap\nOSVersion: " + deffile.DistroID.Codename + "\nMirrorURL: http://us.archive.ubuntu.com/ubuntu/\n\n")
 	if err != nil {
 		return fmt.Errorf("failed to add bootstrap section to definition file: %s", err)
 	}
@@ -186,21 +172,13 @@ func addDebootstrapBootstrap(f *os.File, deffile *DefFileData) error {
 	return nil
 }
 
-func addDistroInit(f *os.File, distro string, sysCfg *sys.Config) error {
-	codename := distro
-	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the version
-	if strings.Contains(codename, ":") {
-		tokens := strings.Split(codename, ":")
-		codename = tokens[1]
-		distro = tokens[0]
-	}
-
+func addDistroInit(f *os.File, deffile *DefFileData, sysCfg *sys.Config) error {
 	_, err := f.WriteString("%post\n")
 	if err != nil {
 		return err
 	}
 
-	switch distro {
+	switch deffile.DistroID.Name {
 	case "ubuntu":
 		_, err := f.WriteString("\tapt-get update && apt-get install -y dash wget git bash gcc gfortran g++ make file software-properties-common\n\n")
 		if err != nil {
@@ -246,21 +224,26 @@ func addDistroInit(f *os.File, distro string, sysCfg *sys.Config) error {
 
 // AddBoostrap adds all the data to the definition file related to bootstrapping
 func AddBootstrap(f *os.File, deffile *DefFileData, sysCfg *sys.Config) error {
-	tokens := strings.Split(deffile.Distro, ":")
-	if len(tokens) != 2 {
-		return fmt.Errorf("failed to extract distro name and version from %s", deffile.Distro)
-	}
-	switch tokens[0] {
-	case "ubuntu":
-		return addDebootstrapBootstrap(f, deffile)
-	case "centos":
-		if !sysCfg.Nopriv {
-			return addYumBootstrap(f, deffile)
-		} else {
-			return addDockerBootstrap(f, deffile)
+	libraryURL := distro.GetBaseImageLibraryURL(deffile.DistroID, sysCfg)
+	if libraryURL != "" {
+		_, err := f.WriteString("Bootstrap: library\nFrom: " + libraryURL + "\n\n")
+		if err != nil {
+			return fmt.Errorf("failed to add bootstrap section to definition file: %s", err)
 		}
-	default:
-		return fmt.Errorf("unsupported distro: %s", deffile.Distro)
+		return nil
+	} else {
+		switch deffile.DistroID.Name {
+		case "ubuntu":
+			return addDebootstrapBootstrap(f, deffile)
+		case "centos":
+			if !sysCfg.Nopriv {
+				return addYumBootstrap(f, deffile)
+			} else {
+				return addDockerBootstrap(f, deffile)
+			}
+		default:
+			return fmt.Errorf("unsupported distro: %s", deffile.DistroID.Name)
+		}
 	}
 }
 
@@ -328,7 +311,7 @@ func UpdateDeffileTemplate(data DefFileData, sysCfg *sys.Config) error {
 	if data.MpiImplm.Version == "" || data.MpiImplm.URL == "" ||
 		data.Path == "" || data.Tags.Version == "" ||
 		data.Tags.URL == "" || data.Tags.Tarball == "" ||
-		data.Distro == "" {
+		data.DistroID.Name == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
@@ -363,7 +346,7 @@ func UpdateDeffileTemplate(data DefFileData, sysCfg *sys.Config) error {
 	content = strings.Replace(content, data.Tags.URL, data.MpiImplm.URL, -1)
 	content = strings.Replace(content, data.Tags.Tarball, tarball, -1)
 	content = strings.Replace(content, "TARARGS", tarArgs, -1)
-	content = UpdateDistroCodename(content, data.Distro)
+	content = UpdateDistroCodename(content, data.DistroID.Codename)
 
 	err = ioutil.WriteFile(data.Path, []byte(content), 0)
 	if err != nil {
@@ -410,7 +393,7 @@ func createFilesSection(f *os.File, app *app.Info, data *DefFileData, sysCfg *sy
 	return nil
 }
 
-func createBootstrapSection(f *os.File, data *DefFileData, sysCfg *sys.Config) error {
+func createUbuntuDockerBootstrapSection(f *os.File, data *DefFileData, sysCfg *sys.Config) error {
 	_, err := f.WriteString("Bootstrap: docker\n")
 	if err != nil {
 		return fmt.Errorf("failed to write to definition file: %s", err)
@@ -566,14 +549,8 @@ func addRPMDependencies(f *os.File, list []string) error {
 	return nil
 }
 
-func addDependencies(f *os.File, distroID string, list []string) error {
-	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the distro name
-	if strings.Contains(distroID, ":") {
-		tokens := strings.Split(distroID, ":")
-		distroID = tokens[1]
-	}
-
-	switch distroID {
+func addDependencies(f *os.File, deffile *DefFileData, list []string) error {
+	switch deffile.DistroID.Name {
 	case "centos":
 		return addRPMDependencies(f, list)
 	case "ubuntu":
@@ -582,14 +559,8 @@ func addDependencies(f *os.File, distroID string, list []string) error {
 	return nil
 }
 
-func addCleanUp(f *os.File, distroID string) error {
-	// if the distro ID is of the form <distro>:<version>, e.g., ubuntu:disco, we extract the distro name
-	if strings.Contains(distroID, ":") {
-		tokens := strings.Split(distroID, ":")
-		distroID = tokens[1]
-	}
-
-	switch distroID {
+func addCleanUp(f *os.File, deffile *DefFileData) error {
+	switch deffile.DistroID.Name {
 	case "centos":
 		_, err := f.WriteString("\tapt-get clean\n")
 		if err != nil {
@@ -640,7 +611,7 @@ func CreateHybridDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) e
 		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
 	}
 
-	err = addDistroInit(f, data.Distro, sysCfg)
+	err = addDistroInit(f, data, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to add the code initializing the distro: %s", err)
 	}
@@ -730,12 +701,12 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 		return fmt.Errorf("failed to create the environment section of the definition file: %s", err)
 	}
 
-	err = addDistroInit(f, data.Distro, sysCfg)
+	err = addDistroInit(f, data, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to add the code initializing the distro: %s", err)
 	}
 
-	err = addDependencies(f, data.Distro, pkgs)
+	err = addDependencies(f, data, pkgs)
 	if err != nil {
 		return fmt.Errorf("failed to add package dependencies to the definition file: %s", err)
 	}
@@ -746,7 +717,7 @@ func CreateBindDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) err
 		return fmt.Errorf("failed to write to definition file: %s", err)
 	}
 
-	err = addCleanUp(f, data.Distro)
+	err = addCleanUp(f, data)
 	if err != nil {
 		return fmt.Errorf("failed to add code to clean up: %s", err)
 	}
@@ -794,17 +765,17 @@ func CreateBasicDefFile(app *app.Info, data *DefFileData, sysCfg *sys.Config) er
 		return fmt.Errorf("failed to create the files section of the definition file: %s", err)
 	}
 
-	err = addDistroInit(f, data.Distro, sysCfg)
+	err = addDistroInit(f, data, sysCfg)
 	if err != nil {
 		return fmt.Errorf("failed to add the code initializing the distro: %s", err)
 	}
 
-	err = addDependencies(f, data.Distro, pkgs)
+	err = addDependencies(f, data, pkgs)
 	if err != nil {
 		return fmt.Errorf("failed to add package dependencies to the definition file: %s", err)
 	}
 
-	err = addCleanUp(f, data.Distro)
+	err = addCleanUp(f, data)
 	if err != nil {
 		return fmt.Errorf("failed to add code to clean up: %s", err)
 	}

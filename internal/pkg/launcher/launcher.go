@@ -75,7 +75,7 @@ func Load() (sys.Config, jm.JM, network.Info, error) {
 	cfg.BinPath = filepath.Dir(bin)
 	cfg.EtcDir = filepath.Join(os.Getenv("GOPATH"), "etc")
 	cfg.TemplateDir = filepath.Join(cfg.EtcDir, "templates")
-	cfg.OfiCfgFile = filepath.Join(cfg.EtcDir, "ofi.conf")
+	cfg.OfiCfgFile = filepath.Join(cfg.EtcDir, "sympi_ofi.conf")
 	cfg.CurPath, err = os.Getwd()
 	if err != nil {
 		return cfg, jobmgr, net, fmt.Errorf("cannot detect current directory")

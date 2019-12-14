@@ -153,7 +153,7 @@ func ConfigFileUpdateEntry(configFile string, key string, value string) error {
 }
 
 func getRegistryConfigFilePath(mpiCfg *implem.Info, sysCfg *sys.Config) string {
-	confFileName := mpiCfg.ID + "-images.conf"
+	confFileName := "sympi_" + mpiCfg.ID + "-images.conf"
 	return filepath.Join(sysCfg.EtcDir, confFileName)
 }
 
@@ -180,7 +180,7 @@ func IsSudoCmd(cmd string, sysCfg *sys.Config) bool {
 }
 
 func getSingularityConfigFilePath(sysCfg *sys.Config) string {
-	return filepath.Join(sysCfg.EtcDir, "singularity.conf")
+	return filepath.Join(sysCfg.EtcDir, "synmpi_singularity.conf")
 }
 
 // LoadSingularityReleaseConf loads from the configuration file the list of supported

@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/distro"
+
 	"github.com/gvallee/go_util/pkg/util"
 	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
@@ -42,17 +44,7 @@ type appConfig struct {
 }
 
 func getMPIURL(mpi string, version string, sysCfg *sys.Config) string {
-	var mpiCfgFile string
-
-	switch mpi {
-	case "openmpi":
-		mpiCfgFile = "openmpi.conf"
-	case "mpich":
-		mpiCfgFile = "mpich.conf"
-	case "intel":
-		mpiCfgFile = "intel.conf"
-	}
-
+	mpiCfgFile := sys.GetMPIConfigFileName(mpi)
 	path := filepath.Join(sysCfg.EtcDir, mpiCfgFile)
 	kvs, err := kv.LoadKeyValueConfig(path)
 	if err != nil {
@@ -111,8 +103,8 @@ func generateEnvFile(app *appConfig, mpiCfg *implem.Info, env *buildenv.Info, sy
 
 func generateStandardDeffile(app *appConfig, container *container.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
 	deffileCfg := deffile.DefFileData{
-		Path:   container.DefFile,
-		Distro: container.Distro,
+		Path:     container.DefFile,
+		DistroID: distro.ParseDescr(container.Distro),
 	}
 
 	// Sanity checks
@@ -132,8 +124,8 @@ func generateStandardDeffile(app *appConfig, container *container.Config, sysCfg
 
 func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
 	deffileCfg := deffile.DefFileData{
-		Path:   mpiCfg.Container.DefFile,
-		Distro: mpiCfg.Container.Distro,
+		Path:     mpiCfg.Container.DefFile,
+		DistroID: distro.ParseDescr(mpiCfg.Container.Distro),
 	}
 
 	// Sanity checks

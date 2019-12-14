@@ -78,7 +78,7 @@ func GetMpirunArgs(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, app *
 
 // GetMPIConfigFile returns the path to the configuration file for a given MPI implementation
 func GetMPIConfigFile(id string, sysCfg *sys.Config) string {
-	return filepath.Join(sysCfg.EtcDir, id+".conf")
+	return filepath.Join(sysCfg.EtcDir, sys.GetMPIConfigFileName(id))
 }
 
 // CheckIntegrity checks if a given installation of MPI has been compromised

@@ -22,6 +22,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
+	"github.com/sylabs/singularity-mpi/internal/pkg/distro"
 	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
@@ -297,17 +298,17 @@ func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *b
 	var f deffile.DefFileData
 	var err error
 
-	distro, _ := sys.ParseDistroID(sysCfg.TargetDistro)
+	distroName, _ := sys.ParseDistroID(sysCfg.TargetDistro)
 
 	// For IMPI, we generate the definition file from a template, for other MPI implementations,
 	// we create a definition file from scratch
 	if mpiCfg.ID == implem.IMPI {
-		defFileName = distro + "_intel.def"
+		defFileName = distroName + "_intel.def"
 		if sysCfg.NetPipe {
-			defFileName = distro + "_intel_netpipe.def"
+			defFileName = distroName + "_intel_netpipe.def"
 		}
 		if sysCfg.IMB {
-			defFileName = distro + "_intel_imb.def"
+			defFileName = distroName + "_intel_imb.def"
 		}
 		f, err = b.createDefFileFromTemplate(defFileName, mpiCfg, env, container, sysCfg)
 		if err != nil {
@@ -321,7 +322,7 @@ func (b *Builder) GenerateDeffile(appInfo *app.Info, mpiCfg *implem.Info, env *b
 			container.AppExe = appInfo.BinPath
 		}
 
-		f.Distro = sysCfg.TargetDistro
+		f.DistroID = distro.ParseDescr(sysCfg.TargetDistro)
 		f.InternalEnv = env
 		f.MpiImplm = mpiCfg
 		f.Path = container.DefFile

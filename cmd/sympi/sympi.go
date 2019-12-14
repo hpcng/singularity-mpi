@@ -367,7 +367,7 @@ func installSingularity(id string, params []string, sysCfg *sys.Config) error {
 
 func listAvail(sysCfg *sys.Config) error {
 	fmt.Println("The following versions of Singularity can be installed:")
-	cfgFile := filepath.Join(sysCfg.EtcDir, "singularity.conf")
+	cfgFile := filepath.Join(sysCfg.EtcDir, "sympi_singularity.conf")
 	kvs, err := kv.LoadKeyValueConfig(cfgFile)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration from %s: %s", cfgFile, err)
@@ -377,7 +377,7 @@ func listAvail(sysCfg *sys.Config) error {
 	}
 
 	fmt.Println("The following versions of Open MPI can be installed:")
-	cfgFile = filepath.Join(sysCfg.EtcDir, "openmpi.conf")
+	cfgFile = filepath.Join(sysCfg.EtcDir, sys.GetMPIConfigFileName("openmpi"))
 	kvs, err = kv.LoadKeyValueConfig(cfgFile)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration from %s: %s", cfgFile, err)
@@ -387,7 +387,7 @@ func listAvail(sysCfg *sys.Config) error {
 	}
 
 	fmt.Println("The following versions of MPICH can be installed:")
-	cfgFile = filepath.Join(sysCfg.EtcDir, "mpich.conf")
+	cfgFile = filepath.Join(sysCfg.EtcDir, sys.GetMPIConfigFileName("mpich"))
 	kvs, err = kv.LoadKeyValueConfig(cfgFile)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration from %s: %s", cfgFile, err)
