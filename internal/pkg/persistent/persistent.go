@@ -8,7 +8,7 @@ package persistent
 import (
 	"path/filepath"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+	"github.com/sylabs/singularity-mpi/pkg/implem"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 

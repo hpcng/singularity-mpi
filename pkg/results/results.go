@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/gvallee/go_util/pkg/util"
-	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+	"github.com/sylabs/singularity-mpi/pkg/implem"
 )
 
 // Result represents the result of a given experiment

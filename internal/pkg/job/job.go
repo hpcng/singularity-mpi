@@ -8,9 +8,9 @@ package job
 import (
 	"bytes"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/pkg/app"
 	"github.com/sylabs/singularity-mpi/pkg/container"
+	"github.com/sylabs/singularity-mpi/pkg/implem"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 

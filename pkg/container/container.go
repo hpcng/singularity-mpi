@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/gvallee/go_util/pkg/util"
-	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/pkg/checker"
+	"github.com/sylabs/singularity-mpi/pkg/implem"
 	"github.com/sylabs/singularity-mpi/pkg/sy"
 	"github.com/sylabs/singularity-mpi/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
