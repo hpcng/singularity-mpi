@@ -540,6 +540,8 @@ func createContainerPersistentMPIBuildEnv(containerBuildEnv *Info, kvs []kv.KV, 
 	return cleanup, err
 }
 
+// CreateDefaultContainerEnvCfg sets all the details for a default build environment for any
+// type of application (it does not have to be a MPI application)
 func CreateDefaultContainerEnvCfg(containerBuildEnv *Info, kvs []kv.KV, sysCfg *sys.Config) (func(), error) {
 	var err error
 	var cleanup func()
