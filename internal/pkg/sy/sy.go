@@ -18,14 +18,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gvallee/go_util/pkg/util"
+	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 // MPIToolConfig is the structure hosting the data from the tool's configuration file (~/.singularity/singularity-mpi.conf)
@@ -153,7 +153,7 @@ func ConfigFileUpdateEntry(configFile string, key string, value string) error {
 }
 
 func getRegistryConfigFilePath(mpiCfg *implem.Info, sysCfg *sys.Config) string {
-	confFileName := mpiCfg.ID + "-images.conf"
+	confFileName := "sympi_" + mpiCfg.ID + "-images.conf"
 	return filepath.Join(sysCfg.EtcDir, confFileName)
 }
 
@@ -180,7 +180,7 @@ func IsSudoCmd(cmd string, sysCfg *sys.Config) bool {
 }
 
 func getSingularityConfigFilePath(sysCfg *sys.Config) string {
-	return filepath.Join(sysCfg.EtcDir, "singularity.conf")
+	return filepath.Join(sysCfg.EtcDir, "synmpi_singularity.conf")
 }
 
 // LoadSingularityReleaseConf loads from the configuration file the list of supported
@@ -276,11 +276,16 @@ func LookupConfig(sysCfg *sys.Config) (sys.Config, error) {
 		return s, fmt.Errorf("undefined path to Singularity binary")
 	}
 
+	err := CheckIntegrity(sysCfg)
+	if err != nil {
+		return s, fmt.Errorf("Singularity installation has been compromised: %s", err)
+	}
+
 	dir := filepath.Dir(s.SingularityBin)
 	// dir is pointing to <something>/bin, by adding '..' we will point to the directory that is of interest to us.
 	// Note filepath will clean the path up
 	dir += "/.."
-	manifest := filepath.Join(dir, "install.MANIFEST")
+	manifest := filepath.Join(dir, "mconfig.MANIFEST")
 
 	// Check if we have a install manifest in that directory
 	if util.FileExists(manifest) {
@@ -371,28 +376,5 @@ func CheckIntegrity(sysCfg *sys.Config) error {
 	basedir := filepath.Dir(sysCfg.SingularityBin)
 	basedir = filepath.Join(basedir, "..")
 	installManifest := filepath.Join(basedir, "singularity.MANIFEST")
-
-	if util.FileExists(installManifest) {
-		data, err := ioutil.ReadFile(installManifest)
-		if err != nil {
-			log.Printf("Manifest %s does not exist", installManifest)
-			return nil // This is not a fatal error
-		}
-		content := string(data)
-		lines := strings.Split(content, "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "bin/singularity: ") {
-				curFileHash := manifest.HashFiles([]string{sysCfg.SingularityBin})
-				if curFileHash[0] != line {
-					hashRecordeed := strings.Split(line, ": ")[1]
-					actualHash := strings.Split(curFileHash[0], ": ")[1]
-					return fmt.Errorf("hashes differ (record: %s; actual: %s)", hashRecordeed, actualHash)
-				}
-			}
-		}
-	} else {
-		log.Printf("No manifest in %s, skipping...\n", basedir)
-	}
-
-	return nil
+	return manifest.Check(installManifest)
 }

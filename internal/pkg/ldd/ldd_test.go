@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
+	"github.com/gvallee/go_util/pkg/util"
 )
 
 func TestPackageDependenciesForFile(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gvallee/go_util/pkg/util"
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
@@ -24,7 +25,6 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 // Config is a structure that represents the configuration of an experiment
@@ -102,6 +102,25 @@ func createNewContainer(myContainerMPICfg *mpi.Config, exp Config, sysCfg *sys.C
 	}
 
 	return res
+}
+
+func processOutput(execRes *syexec.Result, expRes *results.Result, appInfo *app.Info, sysCfg *sys.Config) error {
+	var err error
+
+	expRes.Note, err = postExecutionDataMgt(sysCfg, execRes.Stdout)
+	if err != nil {
+		return fmt.Errorf("failed process data post execution: %s", err)
+	}
+
+	if appInfo.ExpectedNote != "" {
+		if !strings.Contains(expRes.Note, appInfo.ExpectedNote) {
+			return fmt.Errorf("the data from the application's output does not match with the expected output: %s vs. %s", expRes.Note, appInfo.ExpectedNote)
+		}
+	}
+
+	log.Println("NOTE: ", expRes.Note)
+
+	return nil
 }
 
 // Run configure, install and execute a given experiment
@@ -190,7 +209,7 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 		expRes.Pass = false
 		return false, expRes, execRes
 	}
-	if sysCfg.Persistent == "" {
+	if !sys.IsPersistent(sysCfg) {
 		defer func() {
 			execRes = b.UninstallHost(&myHostMPICfg.Implem, &myHostMPICfg.Buildenv, sysCfg)
 			if execRes.Err != nil {
@@ -231,24 +250,24 @@ func Run(exp Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfig) (bool, resu
 
 	/* PREPARE THE COMMAND TO RUN THE ACTUAL TEST */
 
-	log.Println("Running Test(s)...")
+	log.Println("* Running Test(s)...")
 
 	expRes, execRes = launcher.Run(&exp.App, &myHostMPICfg, &exp.HostBuildEnv, &myContainerMPICfg, &jobmgr, sysCfg, nil)
 	if !expRes.Pass {
 		return false, expRes, execRes
 	}
 
-	log.Printf("Successful run - stdout: %s; stderr: %s\n", execRes.Stdout, execRes.Stderr)
+	log.Printf("* Successful run - Analysing data...")
 
-	log.Println("Handling data...")
-	expRes.Note, err = postExecutionDataMgt(sysCfg, execRes.Stdout)
+	err = processOutput(&execRes, &expRes, &exp.App, sysCfg)
 	if err != nil {
-		execRes.Err = fmt.Errorf("failed to handle data: %s", err)
+		execRes.Err = fmt.Errorf("failed to process output: %s", err)
 		expRes.Pass = false
 		return false, expRes, execRes
 	}
 
-	log.Println("NOTE: ", expRes.Note)
+	log.Println("-> Experiment successfully executed")
+	log.Printf("* Experiment's note: %s", expRes.Note)
 
 	expRes.Pass = true
 	return false, expRes, execRes

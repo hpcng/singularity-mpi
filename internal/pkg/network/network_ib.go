@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"strconv"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )

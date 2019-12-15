@@ -15,19 +15,19 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/gvallee/go_util/pkg/util"
+	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/configparser"
 	cfg "github.com/sylabs/singularity-mpi/internal/pkg/configparser"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 	exp "github.com/sylabs/singularity-mpi/pkg/experiments"
 )
 
@@ -161,7 +161,7 @@ func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfi
 			log.Printf("Running experiment %d/%d with host MPI %s and container MPI %s\n", i+1, sysCfg.Nrun, e.HostMPI.Version, e.ContainerMPI.Version)
 			newRes, err = runExperiment(e, sysCfg, syConfig)
 			if err != nil {
-				log.Fatalf("failure during the execution of experiment: %s", err)
+				log.Printf("[ERROR] failure during the execution of experiment: %s", err)
 			}
 			newResults = append(newResults, newRes)
 
@@ -261,7 +261,7 @@ func main() {
 	}
 
 	/* Argument parsing */
-	configFile := flag.String("configfile", sysCfg.EtcDir+"/openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
+	configFile := flag.String("configfile", sysCfg.EtcDir+"/sympi_openmpi.conf", "Path to the configuration file specifying which versions of a given implementation of MPI to test")
 	outputFile := flag.String("outputFile", "", "Full path to the output file")
 	verbose := flag.Bool("v", false, "Enable verbose mode")
 	netpipe := flag.Bool("netpipe", false, "Run NetPipe as test")

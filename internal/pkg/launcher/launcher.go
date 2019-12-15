@@ -18,12 +18,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gvallee/go_util/pkg/util"
+	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/jm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/network"
 	"github.com/sylabs/singularity-mpi/internal/pkg/results"
@@ -31,7 +32,6 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 // Info gathers all the details to start a job
@@ -75,7 +75,7 @@ func Load() (sys.Config, jm.JM, network.Info, error) {
 	cfg.BinPath = filepath.Dir(bin)
 	cfg.EtcDir = filepath.Join(os.Getenv("GOPATH"), "etc")
 	cfg.TemplateDir = filepath.Join(cfg.EtcDir, "templates")
-	cfg.OfiCfgFile = filepath.Join(cfg.EtcDir, "ofi.conf")
+	cfg.OfiCfgFile = filepath.Join(cfg.EtcDir, "sympi_ofi.conf")
 	cfg.CurPath, err = os.Getwd()
 	if err != nil {
 		return cfg, jobmgr, net, fmt.Errorf("cannot detect current directory")
@@ -172,11 +172,46 @@ func SaveErrorDetails(hostMPI *implem.Info, containerMPI *implem.Info, sysCfg *s
 	return nil
 }
 
+func checkOutput(output string, expected string) bool {
+	return strings.Contains(output, expected)
+}
+
+func checkJobOutput(output string, expectedOutput string, jobInfo *job.Job) bool {
+	if jobInfo.NP > 0 {
+		expected := strings.ReplaceAll(expectedOutput, "#NP", strconv.Itoa(jobInfo.NP))
+		for i := 0; i < jobInfo.NP; i++ {
+			curExpectedOutput := strings.ReplaceAll(expected, "#RANK", strconv.Itoa(i))
+			if checkOutput(output, curExpectedOutput) {
+				return true
+			}
+		}
+		return false
+	}
+	return checkOutput(output, expectedOutput)
+}
+
+func expectedOutput(stdout string, stderr string, appInfo *app.Info, jobInfo *job.Job) bool {
+	if appInfo.ExpectedRankOutput == "" {
+		log.Println("App does not define any expected output, skipping check...")
+		return true
+	}
+
+	// The output can be on stderr or stdout, we just cannot know in advanced.
+	// For instance, some MPI applications sends output to stderr by default
+	matched := checkJobOutput(stdout, appInfo.ExpectedRankOutput, jobInfo)
+	if !matched {
+		matched = checkJobOutput(stderr, appInfo.ExpectedRankOutput, jobInfo)
+	}
+
+	return matched
+}
+
 // Run executes a container with a specific version of MPI on the host
 func Run(appInfo *app.Info, hostMPI *mpi.Config, hostBuildEnv *buildenv.Info, containerMPI *mpi.Config, jobmgr *jm.JM, sysCfg *sys.Config, args []string) (results.Result, syexec.Result) {
+	var newjob job.Job
 	var execRes syexec.Result
 	var expRes results.Result
-	var newjob job.Job
+	expRes.Pass = true
 
 	if hostMPI != nil {
 		newjob.HostCfg = &hostMPI.Implem
@@ -215,26 +250,48 @@ func Run(appInfo *app.Info, hostMPI *mpi.Config, hostBuildEnv *buildenv.Info, co
 	// Get the command out/err
 	execRes.Stderr = stderr.String()
 	execRes.Stdout = stdout.String()
+	execRes.Err = err
 	// And add the job out/err (for when we actually use a real job manager such as Slurm)
 	execRes.Stdout += newjob.GetOutput(&newjob, sysCfg)
 	execRes.Stderr += newjob.GetError(&newjob, sysCfg)
-	if err != nil || submitCmd.Ctx.Err() == context.DeadlineExceeded || re.Match(stdout.Bytes()) {
-		log.Printf("[INFO] command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
-		execRes.Err = err
+
+	// We can be facing different types of error
+	if err != nil {
+		// The command simply failed and the Go runtime caught it
+		expRes.Pass = false
+		log.Printf("[ERROR] Command failed - stdout: %s - stderr: %s - err: %s\n", stdout.String(), stderr.String(), err)
+	}
+	if submitCmd.Ctx.Err() == context.DeadlineExceeded {
+		// The command timed out
+		expRes.Pass = false
+		log.Printf("[ERROR] Command timed out - stdout: %s - stderr: %s\n", stdout.String(), stderr.String())
+	}
+	if expRes.Pass {
+		if re.Match(stdout.Bytes()) {
+			// mpirun actually failed, exited with 0 as return code but displayed the usage message (so nothing really ran)
+			expRes.Pass = false
+			log.Printf("[ERROR] mpirun failed and returned help messafe - stdout: %s - stderr: %s\n", stdout.String(), stderr.String())
+		}
+		if !expectedOutput(execRes.Stdout, execRes.Stderr, appInfo, &newjob) {
+			// The output is NOT the expected output
+			expRes.Pass = false
+			log.Printf("[ERROR] Run succeeded but output is not matching expectation - stdout: %s - stderr: %s\n", stdout.String(), stderr.String())
+		}
+	}
+
+	// For any error, we save details to give a chance to the user to analyze what happened
+	if !expRes.Pass {
 		if hostMPI != nil && containerMPI != nil {
 			err = SaveErrorDetails(&hostMPI.Implem, &containerMPI.Implem, sysCfg, &execRes)
 			if err != nil {
-				execRes.Err = fmt.Errorf("impossible to cleanly handle error: %s", err)
-				expRes.Pass = false
-				return expRes, execRes
+				// We only log the error because the most important error is the error
+				// that happened while executing the command
+				log.Printf("impossible to cleanly handle error: %s", err)
 			}
 		} else {
 			log.Println("Not an MPI job, not saving error details")
 		}
-		expRes.Pass = false
-		return expRes, execRes
 	}
 
-	expRes.Pass = true
 	return expRes, execRes
 }

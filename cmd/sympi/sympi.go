@@ -16,16 +16,16 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/gvallee/go_util/pkg/util"
+	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 	"github.com/sylabs/singularity-mpi/pkg/sympi"
 )
 
@@ -367,7 +367,7 @@ func installSingularity(id string, params []string, sysCfg *sys.Config) error {
 
 func listAvail(sysCfg *sys.Config) error {
 	fmt.Println("The following versions of Singularity can be installed:")
-	cfgFile := filepath.Join(sysCfg.EtcDir, "singularity.conf")
+	cfgFile := filepath.Join(sysCfg.EtcDir, "sympi_singularity.conf")
 	kvs, err := kv.LoadKeyValueConfig(cfgFile)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration from %s: %s", cfgFile, err)
@@ -377,7 +377,7 @@ func listAvail(sysCfg *sys.Config) error {
 	}
 
 	fmt.Println("The following versions of Open MPI can be installed:")
-	cfgFile = filepath.Join(sysCfg.EtcDir, "openmpi.conf")
+	cfgFile = filepath.Join(sysCfg.EtcDir, sys.GetMPIConfigFileName("openmpi"))
 	kvs, err = kv.LoadKeyValueConfig(cfgFile)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration from %s: %s", cfgFile, err)
@@ -387,7 +387,7 @@ func listAvail(sysCfg *sys.Config) error {
 	}
 
 	fmt.Println("The following versions of MPICH can be installed:")
-	cfgFile = filepath.Join(sysCfg.EtcDir, "mpich.conf")
+	cfgFile = filepath.Join(sysCfg.EtcDir, sys.GetMPIConfigFileName("mpich"))
 	kvs, err = kv.LoadKeyValueConfig(cfgFile)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration from %s: %s", cfgFile, err)

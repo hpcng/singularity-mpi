@@ -8,7 +8,7 @@ package configparser
 import (
 	"fmt"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
+	"github.com/gvallee/kv/pkg/kv"
 )
 
 // OFIConfig is the structure gathering all the configuration details relevant for OFI.

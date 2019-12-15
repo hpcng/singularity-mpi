@@ -13,13 +13,13 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/gvallee/go_util/pkg/util"
+	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/launcher"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
-	"github.com/sylabs/singularity-mpi/pkg/containizer"
+	"github.com/sylabs/singularity-mpi/pkg/containerizer"
 )
 
 func main() {
@@ -92,7 +92,7 @@ func main() {
 	}
 
 	log.Println("* Creating container for your application...")
-	_, err = containizer.ContainerizeApp(&sysCfg)
+	_, err = containerizer.ContainerizeApp(&sysCfg)
 	if err != nil {
 		log.Fatalf("failed to create container for app: %s", err)
 	}

@@ -55,8 +55,8 @@ The tool achieves this by installing a specific version of MPI on the host and a
 (currently based on Ubuntu) with a specific version of MPI that will run certain MPI programs within it to test the comptibility. 
 
 The version of a given MPI implementation to be used throughout an experiment is defined in a configuration file. For example, a 
-default configuration file for Open MPI is available in `etc/openmpi.conf` and a default configuration file for MPICH is available 
-in `etc/mpich.conf`. Users *must* specify the configuration file on the command line when running the tool (see examples). 
+default configuration file for Open MPI is available in `etc/sympi_openmpi.conf` and a default configuration file for MPICH is available 
+in `etc/sympi_mpich.conf`. Users *must* specify the configuration file on the command line when running the tool (see examples). 
 
 Once the tool has completed, view the ``openmpi-results.txt``/``mpich-results.txt`` to view results of various combinations of the 
 versions and pick the host-container version combination most suitable to you.
@@ -71,39 +71,39 @@ At the moment, we support two tests:
 
 ## Run the tool with the default Open MPI versions and a simple helloworld test
 
-``syvalidate -configfile `pwd`/etc/openmpi.conf``
+``syvalidate -configfile `pwd`/etc/sympi_openmpi.conf``
 
 ## Run the tool with the default Open MPI versions and Netpipe
 
-``syvalidate -configfile `pwd`/etc/openmpi.conf -netpipe``
+``syvalidate -configfile `pwd`/etc/sympi_openmpi.conf -netpipe``
 
 ## Run the tool with the default Open MPI versions and IMB
 
-``syvalidate -configfile `pwd`/etc/openmpi.conf -imb``
+``syvalidate -configfile `pwd`/etc/sympi_openmpi.conf -imb``
 
 ## Run the tool with the default MPICH versions and a simple helloworld test
 
-``syvalidate -configfile `pwd`/etc/mpich.conf``
+``syvalidate -configfile `pwd`/etc/sympi_mpich.conf``
 
 ## Run the tool with the default MPICH versions and Netpipe
 
-``syvalidate -configfile `pwd`/etc/mpich.conf -netpipe``
+``syvalidate -configfile `pwd`/etc/sympi_mpich.conf -netpipe``
 
 ## Run the tool with the default MPICH versions and IMB
 
-``syvalidate -configfile `pwd`/etc/mpich.conf -imb``
+``syvalidate -configfile `pwd`/etc/sympi_mpich.conf -imb``
 
 ## Run the tool with the default Intel MPI versions and a simple helloworld test
 
-``syvalidate -configfile `pwd`/etc/intel.conf``
+``syvalidate -configfile `pwd`/etc/sympi_intel.conf``
 
 ## Run the tool with the default Intel MPI versions and Netpipe
 
-``syvalidate -configfile `pwd`/etc/intel.conf -netpipe``
+``syvalidate -configfile `pwd`/etc/sympi_intel.conf -netpipe``
 
 ## Run the tool with the default Intel MPI versions and collective operation test
 
-``syvalidate -configfile `pwd`/etc/intel.conf -imb``
+``syvalidate -configfile `pwd`/etc/sympi_intel.conf -imb``
 
 These commands will run various MPI programs to test the compatibility between different versions:
 - a basic HelloWorld test,

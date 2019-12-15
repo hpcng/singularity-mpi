@@ -6,6 +6,7 @@
 package mpi
 
 import (
+	"log"
 	"path/filepath"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
@@ -13,6 +14,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
+	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/internal/pkg/openmpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
@@ -32,13 +34,22 @@ type Config struct {
 }
 
 // GetPathToMpirun returns the path to mpirun based a configuration of MPI
-func GetPathToMpirun(mpiCfg *implem.Info, env *buildenv.Info) string {
+func GetPathToMpirun(mpiCfg *implem.Info, env *buildenv.Info) (string, error) {
+	path := filepath.Join(env.InstallDir, "bin", "mpirun")
 	// Intel MPI is installing the binaries and libraries in a quite complex setup
 	if mpiCfg.ID == implem.IMPI {
-		return impi.GetPathToMpirun(env)
+		path = impi.GetPathToMpirun(env)
 	}
 
-	return filepath.Join(env.InstallDir, "bin", "mpirun")
+	// the path to mpiexec is something like <path_to_mpi_install/bin/mpiexec> and we need <path_to_mpi_install>
+	basedir := filepath.Dir(path)
+	basedir = filepath.Join(basedir, "..")
+	err := CheckIntegrity(basedir)
+	if err != nil {
+		return path, err
+	}
+
+	return path, nil
 }
 
 // GetMpirunArgs returns the arguments required by a mpirun
@@ -67,5 +78,13 @@ func GetMpirunArgs(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, app *
 
 // GetMPIConfigFile returns the path to the configuration file for a given MPI implementation
 func GetMPIConfigFile(id string, sysCfg *sys.Config) string {
-	return filepath.Join(sysCfg.EtcDir, id+".conf")
+	return filepath.Join(sysCfg.EtcDir, sys.GetMPIConfigFileName(id))
+}
+
+// CheckIntegrity checks if a given installation of MPI has been compromised
+func CheckIntegrity(basedir string) error {
+	log.Println("* Checking intergrity of MPI...")
+
+	mpiManifest := filepath.Join(basedir, "mpi.MANIFEST")
+	return manifest.Check(mpiManifest)
 }

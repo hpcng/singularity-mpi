@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/internal/pkg/distro"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 
@@ -61,19 +62,19 @@ func TestCreateDefFile(t *testing.T) {
 
 	var helloworldData DefFileData
 	helloworldData.Path = filepath.Join(tempDir, "helloworld.def")
-	helloworldData.Distro = "ubuntu:disco"
+	helloworldData.DistroID = distro.ParseDescr("ubuntu:disco")
 	helloworldData.MpiImplm = &openmpi
 	helloworldData.InternalEnv = &helloworldEnv
 
 	var netpipeData DefFileData
 	netpipeData.Path = filepath.Join(tempDir, "netpipe.def")
-	netpipeData.Distro = "ubuntu:disco"
+	netpipeData.DistroID = distro.ParseDescr("ubuntu:disco")
 	netpipeData.MpiImplm = &openmpi
 	netpipeData.InternalEnv = &netpipeEnv
 
 	var imbData DefFileData
 	imbData.Path = filepath.Join(tempDir, "imb.def")
-	imbData.Distro = "ubuntu:disco"
+	imbData.DistroID = distro.ParseDescr("ubuntu:disco")
 	imbData.MpiImplm = &openmpi
 	imbData.InternalEnv = &imbEnv
 

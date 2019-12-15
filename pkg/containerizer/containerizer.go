@@ -3,27 +3,28 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-package containizer
+package containerizer
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"path/filepath"
 	"time"
 
+	"github.com/sylabs/singularity-mpi/internal/pkg/distro"
+
+	"github.com/gvallee/go_util/pkg/util"
+	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/builder"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	"github.com/sylabs/singularity-mpi/internal/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 const (
@@ -43,17 +44,7 @@ type appConfig struct {
 }
 
 func getMPIURL(mpi string, version string, sysCfg *sys.Config) string {
-	var mpiCfgFile string
-
-	switch mpi {
-	case "openmpi":
-		mpiCfgFile = "openmpi.conf"
-	case "mpich":
-		mpiCfgFile = "mpich.conf"
-	case "intel":
-		mpiCfgFile = "intel.conf"
-	}
-
+	mpiCfgFile := sys.GetMPIConfigFileName(mpi)
 	path := filepath.Join(sysCfg.EtcDir, mpiCfgFile)
 	kvs, err := kv.LoadKeyValueConfig(path)
 	if err != nil {
@@ -112,8 +103,8 @@ func generateEnvFile(app *appConfig, mpiCfg *implem.Info, env *buildenv.Info, sy
 
 func generateStandardDeffile(app *appConfig, container *container.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
 	deffileCfg := deffile.DefFileData{
-		Path:   container.DefFile,
-		Distro: container.Distro,
+		Path:     container.DefFile,
+		DistroID: distro.ParseDescr(container.Distro),
 	}
 
 	// Sanity checks
@@ -133,8 +124,8 @@ func generateStandardDeffile(app *appConfig, container *container.Config, sysCfg
 
 func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) (deffile.DefFileData, error) {
 	deffileCfg := deffile.DefFileData{
-		Path:   mpiCfg.Container.DefFile,
-		Distro: mpiCfg.Container.Distro,
+		Path:     mpiCfg.Container.DefFile,
+		DistroID: distro.ParseDescr(mpiCfg.Container.Distro),
 	}
 
 	// Sanity checks
@@ -142,10 +133,12 @@ func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) 
 		return deffileCfg, fmt.Errorf("invalid parameter(s)")
 	}
 
-	log.Printf("-> Create definition file %s\n", mpiCfg.Container.DefFile)
+	log.Printf("-> Creating definition file %s for application %s\n", mpiCfg.Container.DefFile, app.info.Name)
 
 	deffileCfg.MpiImplm = &mpiCfg.Implem
 	deffileCfg.InternalEnv = &mpiCfg.Buildenv
+	deffileCfg.InternalEnv.InstallDir = filepath.Join(sysCfg.Persistent, sys.MPIInstallDirPrefix+mpiCfg.Implem.ID+"-"+mpiCfg.Implem.Version)
+	log.Printf("-> Installing MPI in container in %s\n", deffileCfg.InternalEnv.InstallDir)
 	deffileCfg.Model = mpiCfg.Container.Model
 
 	switch mpiCfg.Container.Model {
@@ -177,100 +170,6 @@ func generateMPIDeffile(app *appConfig, mpiCfg *mpi.Config, sysCfg *sys.Config) 
 	}
 
 	return deffileCfg, nil
-}
-
-func getCommonContainerConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) (buildenv.Info, func(), error) {
-	// (deffile.DefFileData, buildenv.Info) {
-	var containerBuildEnv buildenv.Info
-	var err error
-	var cleanup func()
-
-	// Data from the user's configuration file
-	containerMPI.Container.Name = kv.GetValue(kvs, "app_name") + ".sif"
-	containerMPI.Container.Distro = kv.GetValue(kvs, "distro")
-	containerMPI.Implem.ID, containerMPI.Implem.Version = sys.ParseDistroID(kv.GetValue(kvs, "mpi"))
-	containerMPI.Implem.URL = getMPIURL(containerMPI.Implem.ID, containerMPI.Implem.Version, sysCfg)
-
-	// These different structures are used during different stage of the creation of the container
-	// so yes we have some duplication in term of value stored in elements of different structures
-	// but this allows us to have fairly independent components without dependency circles.
-	if sysCfg.Persistent == "" {
-		// If we do not integrate with the sympi (i.e., no persistent mode), all subdirectories
-		// in the system wide scratch directory or, if that directory is not defined, in a new
-		// temporary directory. In any case, the temporary directory will NOT
-		// be deleted since it will have both the container image and the definition file. The
-		// subdirectories in the temporary directory should be deleted automatically.
-		if sysCfg.ScratchDir != "" {
-			containerBuildEnv.ScratchDir = sysCfg.ScratchDir
-		} else {
-			containerBuildEnv.ScratchDir, err = ioutil.TempDir("", "")
-			if err != nil {
-				return containerBuildEnv, nil, fmt.Errorf("failed to create temporary directory: %s", err)
-			}
-		}
-		containerBuildEnv.BuildDir = filepath.Join(containerBuildEnv.ScratchDir, "container", "build")
-		containerBuildEnv.InstallDir = filepath.Join(containerBuildEnv.ScratchDir, "install")
-		containerMPI.Container.Path = filepath.Join(containerBuildEnv.ScratchDir, containerMPI.Container.Name)
-
-		cleanup = func() {
-			err := os.RemoveAll(containerBuildEnv.ScratchDir)
-			if err != nil {
-				log.Printf("failed to cleanup %s: %s", containerBuildEnv.ScratchDir, err)
-			}
-			err = os.RemoveAll(containerBuildEnv.BuildDir)
-			if err != nil {
-				log.Printf("failed to cleanup %s: %s", containerBuildEnv.BuildDir, err)
-			}
-			err = os.RemoveAll(containerBuildEnv.InstallDir)
-			if err != nil {
-				log.Printf("failed to cleanup %s: %s", containerBuildEnv.InstallDir, err)
-			}
-		}
-	} else {
-		containerBuildEnv.ScratchDir = filepath.Join(sysCfg.Persistent, "scratch_"+kv.GetValue(kvs, "app_name"))
-		containerBuildEnv.BuildDir = filepath.Join(sysCfg.Persistent, "build_"+kv.GetValue(kvs, "app_name"))
-		containerBuildEnv.InstallDir = filepath.Join(sysCfg.Persistent, sys.ContainerInstallDirPrefix+kv.GetValue(kvs, "app_name"))
-		containerMPI.Container.Path = filepath.Join(containerBuildEnv.InstallDir, containerMPI.Container.Name)
-
-		cleanup = func() {
-			err := os.RemoveAll(containerBuildEnv.ScratchDir)
-			if err != nil {
-				log.Printf("failed to cleanup %s: %s", containerBuildEnv.ScratchDir, err)
-			}
-			err = os.RemoveAll(containerBuildEnv.BuildDir)
-			if err != nil {
-				log.Printf("failed to cleanup %s: %s", containerBuildEnv.BuildDir, err)
-			}
-		}
-	}
-
-	containerMPI.Container.BuildDir = containerBuildEnv.BuildDir
-	containerMPI.Container.InstallDir = containerBuildEnv.InstallDir
-	containerMPI.Container.DefFile = filepath.Join(containerBuildEnv.BuildDir, kv.GetValue(kvs, "app_name")+".def")
-	if sysCfg.ScratchDir != "" {
-		log.Printf("Changing system-wide scratch directory from %s to %s\n", sysCfg.ScratchDir, containerBuildEnv.ScratchDir)
-	}
-	sysCfg.ScratchDir = containerBuildEnv.ScratchDir
-
-	return containerBuildEnv, cleanup, nil
-}
-
-func getHybridConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) (buildenv.Info, func(), error) {
-	containerBuildEnv, cleanup, err := getCommonContainerConfiguration(kvs, containerMPI, sysCfg)
-	if err != nil {
-		return containerBuildEnv, cleanup, err
-	}
-	containerMPI.Container.Model = container.HybridModel
-	return containerBuildEnv, cleanup, nil
-}
-
-func getBindConfiguration(kvs []kv.KV, containerMPI *mpi.Config, sysCfg *sys.Config) (buildenv.Info, func(), error) {
-	containerBuildEnv, cleanup, err := getCommonContainerConfiguration(kvs, containerMPI, sysCfg)
-	if err != nil {
-		return containerBuildEnv, cleanup, err
-	}
-	containerMPI.Container.Model = container.BindModel
-	return containerBuildEnv, cleanup, nil
 }
 
 // ContainerizeApp will parse the configuration file specific to an app, install
@@ -313,7 +212,7 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 		}
 	default:
 		// This is where we end up when no MPI is used by the container
-		containerBuildEnv, cleanup, err = getCommonContainerConfiguration(kvs, &containerMPI, sysCfg)
+		containerBuildEnv, cleanup, err = getCommonContainerConfiguration(kvs, &containerMPI.Container, sysCfg)
 		if err != nil {
 			return containerMPI.Container, fmt.Errorf("failed to set build environment: %s", err)
 		}
@@ -352,6 +251,7 @@ func ContainerizeApp(sysCfg *sys.Config) (container.Config, error) {
 
 	// Generate images
 	log.Println("* Container configuration:")
+	log.Printf("-> Application's name: %s\n", app.info.Name)
 	log.Printf("-> Definition file: %s\n", containerMPI.Container.DefFile)
 	log.Printf("-> MPI implementation: %s\n", containerMPI.Implem.ID)
 	log.Printf("-> MPI implementation version: %s\n", containerMPI.Implem.Version)

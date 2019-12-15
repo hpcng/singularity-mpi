@@ -8,12 +8,11 @@ package jm
 import (
 	"testing"
 
+	"github.com/gvallee/go_util/pkg/util"
 	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
-
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 // Copyright (c) 2019, Sylabs Inc. All rights reserved.

@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gvallee/go_util/pkg/util"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	util "github.com/sylabs/singularity-mpi/internal/pkg/util/file"
 )
 
 // Result represents the result of a given experiment
