@@ -16,7 +16,7 @@ import (
 
 	"github.com/gvallee/go_util/pkg/util"
 	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // Result represents the result of the execution of a command

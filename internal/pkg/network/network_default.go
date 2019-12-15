@@ -6,7 +6,7 @@
 package network
 
 import (
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // LoadDefault is the function called to load the default component for networking

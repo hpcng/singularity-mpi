@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // RPMGetDependencies parses the ldd output and figure out the required

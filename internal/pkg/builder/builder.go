@@ -17,10 +17,7 @@ import (
 	"strings"
 
 	"github.com/gvallee/go_util/pkg/util"
-	"github.com/sylabs/singularity-mpi/internal/pkg/app"
 	"github.com/sylabs/singularity-mpi/internal/pkg/autotools"
-	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	"github.com/sylabs/singularity-mpi/internal/pkg/distro"
 	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
@@ -29,9 +26,12 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpich"
 	"github.com/sylabs/singularity-mpi/internal/pkg/openmpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
-	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/app"
+	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/container"
+	"github.com/sylabs/singularity-mpi/pkg/sy"
+	"github.com/sylabs/singularity-mpi/pkg/syexec"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 const (

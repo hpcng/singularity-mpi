@@ -13,7 +13,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // GetDependenciesFn is a function "pointer" for a distribution-specific

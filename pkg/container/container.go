@@ -18,12 +18,12 @@ import (
 	"time"
 
 	"github.com/gvallee/go_util/pkg/util"
-	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
-	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/checker"
+	"github.com/sylabs/singularity-mpi/pkg/sy"
+	"github.com/sylabs/singularity-mpi/pkg/syexec"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 const (

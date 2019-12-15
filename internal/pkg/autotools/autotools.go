@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/gvallee/go_util/pkg/util"
-	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
+	"github.com/sylabs/singularity-mpi/pkg/syexec"
 )
 
 // Config represents the configuration of the autotools-compliant software to configure/compile/install

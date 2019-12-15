@@ -8,10 +8,10 @@ package job
 import (
 	"bytes"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/app"
-	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/app"
+	"github.com/sylabs/singularity-mpi/pkg/container"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // CleanUpFn is a "function pointer" to call to clean up the system after the completion of a job

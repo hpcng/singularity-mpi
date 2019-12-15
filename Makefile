@@ -3,13 +3,10 @@
 # LICENSE.md file distributed with the sources of this project regarding your
 # rights to use or distribute this software.
 
-all: sympi syvalidate sycontainerize syrun
+all: sympi sycontainerize syrun
 
 syrun:
 	cd cmd/syrun; go build syrun.go
-
-syvalidate: 
-	cd cmd/syvalidate; go build syvalidate.go
 
 sympi: cmd/sympi/sympi.go
 	cd cmd/sympi; go build sympi.go
@@ -27,14 +24,11 @@ test: install
 
 uninstall:
 	@rm -f $(GOPATH)/bin/sympi \
-		$(GOPATH)/bin/syvalidate \
 		$(GOPATH)/bin/sycontainerize
 
 clean:
 	@rm -f main
-	@rm -f cmd/syvalidate/syvalidate \
-		cmd/syvalidate/main \
-		cmd/sympi/sympi \
+	@rm -f cmd/sympi/sympi \
 		cmd/syrun/syrun \
 		cmd/sympi/main \
 		cmd/sycontainerize/sycontainerize \

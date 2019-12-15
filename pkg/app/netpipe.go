@@ -6,7 +6,7 @@
 package app
 
 import (
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // GetNetpipe returns the app.Info structure with all the details for the

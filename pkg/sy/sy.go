@@ -20,12 +20,12 @@ import (
 
 	"github.com/gvallee/go_util/pkg/util"
 	"github.com/gvallee/kv/pkg/kv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/checker"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
-	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/checker"
+	"github.com/sylabs/singularity-mpi/pkg/syexec"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // MPIToolConfig is the structure hosting the data from the tool's configuration file (~/.singularity/singularity-mpi.conf)

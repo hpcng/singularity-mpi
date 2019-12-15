@@ -12,11 +12,11 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
-	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/container"
+	"github.com/sylabs/singularity-mpi/pkg/syexec"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // Prun is the structure representing the native job manager (i.e., directly use mpirun)
