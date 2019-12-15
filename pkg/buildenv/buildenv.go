@@ -23,8 +23,8 @@ import (
 
 	"github.com/gvallee/go_util/pkg/util"
 	"github.com/gvallee/kv/pkg/kv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
+	"github.com/sylabs/singularity-mpi/pkg/implem"
 	"github.com/sylabs/singularity-mpi/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
 )

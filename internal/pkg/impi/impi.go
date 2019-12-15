@@ -17,8 +17,8 @@ import (
 
 	"github.com/gvallee/go_util/pkg/util"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
-	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/implem"
 	"github.com/sylabs/singularity-mpi/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
 )

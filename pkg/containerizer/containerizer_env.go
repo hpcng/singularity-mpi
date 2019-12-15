@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 
 	"github.com/gvallee/kv/pkg/kv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/pkg/container"
+	"github.com/sylabs/singularity-mpi/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 

@@ -16,10 +16,10 @@ import (
 
 	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
-	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/slurm"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
 	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/pkg/sy"
 	"github.com/sylabs/singularity-mpi/pkg/syexec"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
