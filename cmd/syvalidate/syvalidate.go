@@ -161,7 +161,7 @@ func run(experiments []exp.Config, sysCfg *sys.Config, syConfig *sy.MPIToolConfi
 			log.Printf("Running experiment %d/%d with host MPI %s and container MPI %s\n", i+1, sysCfg.Nrun, e.HostMPI.Version, e.ContainerMPI.Version)
 			newRes, err = runExperiment(e, sysCfg, syConfig)
 			if err != nil {
-				log.Fatalf("failure during the execution of experiment: %s", err)
+				log.Printf("[ERROR] failure during the execution of experiment: %s", err)
 			}
 			newResults = append(newResults, newRes)
 
