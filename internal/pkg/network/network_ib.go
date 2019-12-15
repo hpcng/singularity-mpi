@@ -12,8 +12,8 @@ import (
 	"strconv"
 
 	"github.com/gvallee/kv/pkg/kv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sy"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 const (

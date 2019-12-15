@@ -11,11 +11,11 @@ import (
 
 	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/autotools"
-	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/deffile"
 	"github.com/sylabs/singularity-mpi/internal/pkg/network"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sy"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/sy"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 const (

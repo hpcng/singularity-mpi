@@ -9,14 +9,14 @@ import (
 	"log"
 	"path/filepath"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/app"
-	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/internal/pkg/openmpi"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/app"
+	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/container"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // Config represents a configuration of MPI for a target platform

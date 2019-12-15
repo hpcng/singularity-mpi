@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 
 	"github.com/gvallee/kv/pkg/kv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/buildenv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/container"
 	"github.com/sylabs/singularity-mpi/internal/pkg/mpi"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/container"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 func getCommonContainerConfiguration(kvs []kv.KV, container *container.Config, sysCfg *sys.Config) (buildenv.Info, func(), error) {

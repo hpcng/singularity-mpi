@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // GetPersistentHostMPIInstallDir returns the path to the directory where

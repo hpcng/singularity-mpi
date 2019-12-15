@@ -8,14 +8,14 @@ package network
 import (
 	"log"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 const (
 	// Infiniband is the ID used to identify Infiniband
 	Infiniband = "IB"
 	// Default is the ID used to identify the default networking configuration
-	Default    = "default"
+	Default = "default"
 )
 
 // SaveFn is a function of a component to save the network configuration in a configuration file

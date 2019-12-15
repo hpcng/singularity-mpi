@@ -8,7 +8,7 @@ package app
 import (
 	"path/filepath"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // GetHelloworld returns the app.Info structure with all the details for our

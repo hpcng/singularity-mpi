@@ -25,8 +25,8 @@ import (
 	"github.com/gvallee/kv/pkg/kv"
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
 	"github.com/sylabs/singularity-mpi/internal/pkg/persistent"
-	"github.com/sylabs/singularity-mpi/internal/pkg/syexec"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/syexec"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // SoftwarePackage gathers all the information related to the software package to prepare in the build environment

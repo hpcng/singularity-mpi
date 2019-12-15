@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 // todo: should be in a util package
