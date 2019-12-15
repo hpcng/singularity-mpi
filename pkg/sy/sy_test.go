@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/implem"
-	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
+	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
 func TestGetImageURL(t *testing.T) {
