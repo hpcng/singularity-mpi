@@ -14,6 +14,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/sys"
 )
 
+// ID represents a Linux distribution
 type ID struct {
 	// Name is the name of the Linux distribution, e.g., ubuntu
 	Name string
@@ -25,6 +26,7 @@ type ID struct {
 	Codename string
 }
 
+// GetBaseImageLibraryURL returns the library URL to use as base image (when possible)
 func GetBaseImageLibraryURL(linuxDistro ID, sysCfg *sys.Config) string {
 	configFile := filepath.Join(sysCfg.EtcDir, "sympi_"+linuxDistro.Name+".conf")
 
