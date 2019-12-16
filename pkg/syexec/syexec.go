@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gvallee/go_util/pkg/util"
-	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
+	"github.com/sylabs/singularity-mpi/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 

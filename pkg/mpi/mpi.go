@@ -10,12 +10,12 @@ import (
 	"path/filepath"
 
 	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
-	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/internal/pkg/openmpi"
 	"github.com/sylabs/singularity-mpi/pkg/app"
 	"github.com/sylabs/singularity-mpi/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/pkg/container"
 	"github.com/sylabs/singularity-mpi/pkg/implem"
+	"github.com/sylabs/singularity-mpi/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
 )
 
