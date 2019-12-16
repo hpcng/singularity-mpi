@@ -18,12 +18,12 @@ import (
 
 	"github.com/gvallee/go_util/pkg/util"
 	"github.com/gvallee/kv/pkg/kv"
-	"github.com/sylabs/singularity-mpi/internal/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/internal/pkg/sympierr"
 	"github.com/sylabs/singularity-mpi/pkg/buildenv"
 	"github.com/sylabs/singularity-mpi/pkg/builder"
 	"github.com/sylabs/singularity-mpi/pkg/checker"
 	"github.com/sylabs/singularity-mpi/pkg/implem"
+	"github.com/sylabs/singularity-mpi/pkg/manifest"
 	"github.com/sylabs/singularity-mpi/pkg/sy"
 	"github.com/sylabs/singularity-mpi/pkg/sympi"
 	"github.com/sylabs/singularity-mpi/pkg/sys"
