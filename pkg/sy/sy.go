@@ -46,6 +46,8 @@ const (
 
 	// SudoCmdsKey is the key used to specify which Singularity commands need to be executed with sudo
 	SudoCmdsKey = "singularity_sudo_cmds"
+
+	sympiConfigFilename = "sympi_singularity.conf"
 )
 
 // GetPathToSyMPIConfigFile returns the path to the tool's configuration file
@@ -180,7 +182,7 @@ func IsSudoCmd(cmd string, sysCfg *sys.Config) bool {
 }
 
 func getSingularityConfigFilePath(sysCfg *sys.Config) string {
-	return filepath.Join(sysCfg.EtcDir, "synmpi_singularity.conf")
+	return filepath.Join(sysCfg.EtcDir, sympiConfigFilename)
 }
 
 // LoadSingularityReleaseConf loads from the configuration file the list of supported
