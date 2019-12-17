@@ -68,7 +68,7 @@ func PrunSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.SyCm
 	sycmd.CmdArgs = append(sycmd.CmdArgs, j.Container.AppExe)
 
 	// Get the exec arguments and set the env var
-	execArgs := container.GetExecArgs(j.HostCfg, env, j.Container, sysCfg)
+	execArgs := container.GetMPIExecCfg(j.HostCfg, env, j.Container, sysCfg)
 	syExecArgsEnv := "SY_EXEC_ARGS=\"" + strings.Join(execArgs, " ") + "\""
 	log.Printf("Command to be executed: %s %s", sycmd.BinPath, strings.Join(sycmd.CmdArgs, " "))
 	log.Printf("SY_EXEC_ARGS to be used: %s", strings.Join(execArgs, " "))

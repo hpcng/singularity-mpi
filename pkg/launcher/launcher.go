@@ -44,6 +44,11 @@ type Info struct {
 func prepareLaunchCmd(j *job.Job, jobmgr *jm.JM, hostEnv *buildenv.Info, sysCfg *sys.Config) (syexec.SyCmd, error) {
 	var cmd syexec.SyCmd
 
+	// Sanity checks
+	if j == nil || jobmgr == nil || hostEnv == nil || sysCfg == nil {
+		return cmd, fmt.Errorf("invalid parameter(s)")
+	}
+
 	launchCmd, err := jobmgr.Submit(j, hostEnv, sysCfg)
 	if err != nil {
 		return cmd, fmt.Errorf("failed to create a launcher object: %s", err)

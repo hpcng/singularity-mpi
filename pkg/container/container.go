@@ -384,10 +384,13 @@ func GetMetadata(imgPath string, sysCfg *sys.Config) (Config, implem.Info, error
 }
 
 func getDefaultExecArgs() []string {
-	return strings.Split(defaultExecArgs, " ")
+	args := []string{"exec"}
+	args = append(args, strings.Split(defaultExecArgs, " ")...)
+
+	return args
 }
 
-func getBindArguments(hostMPI *implem.Info, hostBuildenv *buildenv.Info, c *Config) []string {
+func getMPIBindArguments(hostMPI *implem.Info, hostBuildenv *buildenv.Info, c *Config) []string {
 	var bindArgs []string
 
 	if c.Model == BindModel {
@@ -401,20 +404,24 @@ func getBindArguments(hostMPI *implem.Info, hostBuildenv *buildenv.Info, c *Conf
 	return bindArgs
 }
 
-// GetExecArgs figures out the singularity exec arguments to be used for executing a container
-func GetExecArgs(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, syContainer *Config, sysCfg *sys.Config) []string {
+// GetMPIExecCfg figures out the singularity exec arguments to be used for executing a container
+func GetMPIExecCfg(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, syContainer *Config, sysCfg *sys.Config) []string {
 	args := getDefaultExecArgs()
 	if sysCfg.Nopriv {
 		args = append(args, "-u")
 	}
-
-	bindArgs := getBindArguments(myHostMPICfg, hostBuildEnv, syContainer)
+	bindArgs := getMPIBindArguments(myHostMPICfg, hostBuildEnv, syContainer)
 	if len(bindArgs) > 0 {
 		args = append(args, "--bind")
 		args = append(args, bindArgs...)
 	}
-
 	log.Printf("-> Exec args to use: %s\n", strings.Join(args, " "))
+	return args
+}
 
+// GetDefaultExecCfg returns the default way to run a container
+func GetDefaultExecCfg() []string {
+	args := getDefaultExecArgs()
+	log.Printf("-> Exec args to use: %s\n", strings.Join(args, " "))
 	return args
 }

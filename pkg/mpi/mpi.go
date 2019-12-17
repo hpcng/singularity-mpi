@@ -6,6 +6,7 @@
 package mpi
 
 import (
+	"fmt"
 	"log"
 	"path/filepath"
 
@@ -35,6 +36,11 @@ type Config struct {
 
 // GetPathToMpirun returns the path to mpirun based a configuration of MPI
 func GetPathToMpirun(mpiCfg *implem.Info, env *buildenv.Info) (string, error) {
+	// Sanity checks
+	if mpiCfg == nil || env == nil {
+		return "", fmt.Errorf("invalid parameter(s)")
+	}
+
 	path := filepath.Join(env.InstallDir, "bin", "mpirun")
 	// Intel MPI is installing the binaries and libraries in a quite complex setup
 	if mpiCfg.ID == implem.IMPI {
@@ -54,10 +60,10 @@ func GetPathToMpirun(mpiCfg *implem.Info, env *buildenv.Info) (string, error) {
 
 // GetMpirunArgs returns the arguments required by a mpirun
 func GetMpirunArgs(myHostMPICfg *implem.Info, hostBuildEnv *buildenv.Info, app *app.Info, syContainer *container.Config, sysCfg *sys.Config) ([]string, error) {
-	args := []string{"singularity", "exec"}
-	args = append(args, container.GetExecArgs(myHostMPICfg, hostBuildEnv, syContainer, sysCfg)...)
-	args = append(args, syContainer.Path, app.BinPath)
 	var extraArgs []string
+	args := []string{"singularity"}
+	args = append(args, container.GetMPIExecCfg(myHostMPICfg, hostBuildEnv, syContainer, sysCfg)...)
+	args = append(args, syContainer.Path, app.BinPath)
 
 	// We really do not want to do this but MPICH is being picky about args so for now, it will do the job.
 	switch myHostMPICfg.ID {

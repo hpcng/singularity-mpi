@@ -33,3 +33,12 @@ type Info struct {
 	// Tarball is the name of the tarball of the MPI implementation
 	Tarball string
 }
+
+// IsMPI checks if information passed in is an MPI implementation
+func IsMPI(i *Info) bool {
+	if i != nil && (i.ID == OMPI || i.ID == MPICH || i.ID == IMPI) {
+		return true
+	}
+
+	return false
+}
