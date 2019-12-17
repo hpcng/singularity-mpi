@@ -15,6 +15,7 @@ import (
 	"github.com/sylabs/singularity-mpi/internal/pkg/impi"
 	"github.com/sylabs/singularity-mpi/internal/pkg/job"
 	"github.com/sylabs/singularity-mpi/pkg/buildenv"
+	"github.com/sylabs/singularity-mpi/pkg/container"
 	"github.com/sylabs/singularity-mpi/pkg/implem"
 	"github.com/sylabs/singularity-mpi/pkg/mpi"
 	"github.com/sylabs/singularity-mpi/pkg/syexec"
@@ -63,18 +64,11 @@ func NativeGetError(j *job.Job, sysCfg *sys.Config) string {
 	return j.ErrBuffer.String()
 }
 
-// NativeSubmit is the function to call to submit a job through the native job manager
-func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.SyCmd, error) {
-	var sycmd syexec.SyCmd
-
-	if j.App.BinPath == "" {
-		return sycmd, fmt.Errorf("application binary is undefined")
-	}
-
+func prepareMPISubmit(sycmd *syexec.SyCmd, j *job.Job, env *buildenv.Info, sysCfg *sys.Config) error {
 	var err error
 	sycmd.BinPath, err = mpi.GetPathToMpirun(j.HostCfg, env)
 	if err != nil {
-		return sycmd, err
+		return err
 	}
 	if j.NP > 0 {
 		sycmd.CmdArgs = append(sycmd.CmdArgs, "-np")
@@ -83,7 +77,7 @@ func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.Sy
 
 	mpirunArgs, err := mpi.GetMpirunArgs(j.HostCfg, env, &j.App, j.Container, sysCfg)
 	if err != nil {
-		return sycmd, fmt.Errorf("unable to get mpirun arguments: %s", err)
+		return fmt.Errorf("unable to get mpirun arguments: %s", err)
 	}
 	if len(mpirunArgs) > 0 {
 		sycmd.CmdArgs = append(sycmd.CmdArgs, mpirunArgs...)
@@ -97,6 +91,37 @@ func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.Sy
 	log.Printf("Using %s as LD_LIBRARY_PATH\n", newLDPath)
 	sycmd.Env = append([]string{"LD_LIBRARY_PATH=" + newLDPath}, os.Environ()...)
 	sycmd.Env = append([]string{"PATH=" + newPath}, os.Environ()...)
+
+	return nil
+}
+
+func prepareStdSubmit(sycmd *syexec.SyCmd, j *job.Job, env *buildenv.Info, sysCfg *sys.Config) error {
+	sycmd.BinPath = sysCfg.SingularityBin
+	sycmd.CmdArgs = container.GetDefaultExecCfg()
+	sycmd.CmdArgs = append(sycmd.CmdArgs, j.Container.Path, j.App.BinPath)
+
+	return nil
+}
+
+// NativeSubmit is the function to call to submit a job through the native job manager
+func NativeSubmit(j *job.Job, env *buildenv.Info, sysCfg *sys.Config) (syexec.SyCmd, error) {
+	var sycmd syexec.SyCmd
+
+	if j.App.BinPath == "" {
+		return sycmd, fmt.Errorf("application binary is undefined")
+	}
+
+	if implem.IsMPI(j.HostCfg) {
+		err := prepareMPISubmit(&sycmd, j, env, sysCfg)
+		if err != nil {
+			return sycmd, fmt.Errorf("unable to prepare MPI job: %s", err)
+		}
+	} else {
+		err := prepareStdSubmit(&sycmd, j, env, sysCfg)
+		if err != nil {
+			return sycmd, fmt.Errorf("unable to prepare MPI job: %s", err)
+		}
+	}
 
 	j.GetOutput = NativeGetOutput
 	j.GetError = NativeGetError
