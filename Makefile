@@ -5,6 +5,14 @@
 
 all: sympi sycontainerize syrun
 
+checkenv-%:
+	@ if [ "${${*}}" = "" ]; then \
+		echo "Environment variable $* is not set"; \
+		exit 1; \
+	fi
+
+check: checkenv-GOPATH
+
 syrun:
 	cd cmd/syrun; go build syrun.go
 
@@ -14,7 +22,7 @@ sympi: cmd/sympi/sympi.go
 sycontainerize: 
 	cd cmd/sycontainerize; go build sycontainerize.go
 
-install: all
+install: check all
 	go install ./...
 	@cp -f cmd/sympi/sympi_init ${GOPATH}/bin
 	@cp -rf etc ${GOPATH}
@@ -22,7 +30,7 @@ install: all
 test: install
 	go test ./...
 
-uninstall:
+uninstall: check
 	@rm -f $(GOPATH)/bin/sympi \
 		$(GOPATH)/bin/sycontainerize
 
