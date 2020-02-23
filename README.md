@@ -13,7 +13,7 @@ Note: *syvalidate* has been moved to its own repository (https://github.com/syla
 # Preparation of the source code
 
 Before installation, please make sure that your GOPATH environment variable is correctly set and that $GOPATH/bin is in your PATH. This is required because we currently install binaries in $GOPATH/bin.
-Then, simply clone the repository on your system: `mkdir -p $GOPATH/src/github.com/sylabs/ && cd $GOPATH/src/github.com/sylabs && git clone https://github.com/sylabs/singularity-mpi.git`, and run `cd $GOPATH/src/github.com/sylabs && make install`.
+Then, simply clone the repository on your system: `mkdir -p $GOPATH/src/github.com/sylabs/ && cd $GOPATH/src/github.com/sylabs && git clone https://github.com/sylabs/singularity-mpi.git`, and run `cd $GOPATH/src/github.com/sylabs/singularity-mpi && make install`.
 
 # Overview
 
